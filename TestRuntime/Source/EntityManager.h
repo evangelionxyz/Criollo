@@ -19,7 +19,7 @@
     #endif
 #endif
 
-namespace criollo
+namespace test
 {
     // Delegates for C# entity lifecycle methods
     typedef void (CORECLR_DELEGATE_CALLTYPE *EntityStartDelegate)(uint64_t entityID);

@@ -3,7 +3,7 @@
 #include "EntityManager.h"
 #include <iostream>
 
-namespace criollo
+namespace test
 {
     EntityManager::EntityManager()
         : m_NextEntityID(1)

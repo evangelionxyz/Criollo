@@ -18,13 +18,13 @@ typedef int (*coreclr_shutdown_ptr)(void* hostHandle, unsigned int domainId);
 typedef int (*coreclr_create_delegate_ptr)(void* hostHandle, unsigned int domainId, const char* entryPointAssemblyName, const char* entryPointTypeName, const char* entryPointMethodName, void** delegate);
 typedef int (*coreclr_execute_assembly_ptr)(void* hostHandle, unsigned int domainId, int argc, const char** argv, const char* managedAssemblyPath, unsigned int* exitCode);
 
-namespace criollo
+namespace mochi
 {
     struct HostSettings
     {
         std::string RuntimePath;
         std::string AssemblyPath;
-        std::string AppDomainName = "CriolloHost";
+        std::string AppDomainName = "MochiSharpHost";
 
         HostSettings() = default;
         HostSettings(const std::string& runtimePath, const std::string& assemblyPath)
@@ -41,7 +41,7 @@ namespace criollo
         CoreCLRHost(const CoreCLRHost&) = delete;
         CoreCLRHost& operator=(const CoreCLRHost&) = delete;
 
-        bool Initialize(const std::string& runtimePath, const std::string& assemblyPath);
+        bool Initialize(const std::string& runtimePath, const std::string& assemblyPath, const std::string& appDomainName);
         bool Shutdown();
 
         bool ExecuteAssembly(const std::string& assemblyPath, int argc = 0, const char** argv = nullptr, unsigned int* exitCode = nullptr);
@@ -90,7 +90,7 @@ namespace criollo
     };
 
     // C++ API wrapper for DLL boundary safety
-    class CRIOLLO_API CoreCLRHostAPI
+    class MOCHISHARP_API CoreCLRHostAPI
     {
     public:
         CoreCLRHostAPI();
@@ -117,9 +117,9 @@ namespace criollo
     };
 
     // Factory functions for creating/destroying the host from DLL
-    extern "C" CRIOLLO_API CoreCLRHostAPI* CreateCoreRuntimeHost();
-    extern "C" CRIOLLO_API CoreCLRHostAPI* CreateCoreRuntimeHostWithSettings(const char* runtimePath, const char* assemblyPath, const char* appDomainName);
-    extern "C" CRIOLLO_API void DestroyCoreRuntimeHost(CoreCLRHostAPI* host);
+    extern "C" MOCHISHARP_API CoreCLRHostAPI* CreateCoreRuntimeHost();
+    extern "C" MOCHISHARP_API CoreCLRHostAPI* CreateCoreRuntimeHostWithSettings(const char* runtimePath, const char* assemblyPath, const char* appDomainName);
+    extern "C" MOCHISHARP_API void DestroyCoreRuntimeHost(CoreCLRHostAPI* host);
 }
 
 #endif

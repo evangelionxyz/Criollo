@@ -3,7 +3,7 @@
 #include "ScriptBindings.h"
 #include <iostream>
 
-namespace criollo
+namespace test
 {
     std::unordered_map<uint64_t, Entity *> ScriptBindings::s_Entities;
 

@@ -7,7 +7,7 @@
 #include <print>
 #include <locale>
 
-namespace criollo
+namespace mochi
 {
     CoreCLRHost::CoreCLRHost()
         : m_CoreCLRModule(nullptr)
@@ -25,7 +25,7 @@ namespace criollo
         Shutdown();
     }
 
-    bool CoreCLRHost::Initialize(const std::string& runtimePath, const std::string& assemblyPath)
+    bool CoreCLRHost::Initialize(const std::string& runtimePath, const std::string& assemblyPath, const std::string &appDomainName)
     {
         if (m_HostHandle != nullptr)
         {
@@ -94,10 +94,8 @@ namespace criollo
         };
 
         // Initialize CoreCLR
-        const int result = m_coreclr_initialize(exePath.c_str(), "CriolloHost",
-            static_cast<int>(propertyKeys.size()), propertyKeys.data(),
-            propertyValues, &m_HostHandle, &m_DomainId
-        );
+        const int result = m_coreclr_initialize(exePath.c_str(), appDomainName.c_str(),
+            static_cast<int>(propertyKeys.size()), propertyKeys.data(), propertyValues, &m_HostHandle, &m_DomainId);
 
         if (result < 0)
         {
@@ -181,37 +179,29 @@ namespace criollo
 
     void CoreCLRHost::BuildTpaList(const std::string& directory, std::string& tpaList)
     {
-        try
+        if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
         {
-            if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory))
-            {
-                return;
-            }
-
-            for (const auto& entry : std::filesystem::directory_iterator(directory))
-            {
-                if (!entry.is_regular_file())
-                    continue;
-
-                const std::string extension = entry.path().extension().string();
-                if (extension == ".dll")
-                {
-                    if (!tpaList.empty())
-                    {
-                        tpaList += ";";
-                    }
-                    tpaList += entry.path().string();
-                }
-            }
+            return;
         }
-        catch (...)
+
+        for (const auto& entry : std::filesystem::directory_iterator(directory))
         {
-            // Ignore filesystem errors
+            if (!entry.is_regular_file())
+                continue;
+
+            const std::string extension = entry.path().extension().string();
+            if (extension == ".dll")
+            {
+                if (!tpaList.empty())
+                {
+                    tpaList += ";";
+                }
+                tpaList += entry.path().string();
+            }
         }
     }
 
     // ===== CoreCLRHostAPI Implementation (Pimpl Pattern) =====
-
     struct CoreCLRHostAPI::Implementation
     {
         CoreCLRHost host;
@@ -242,7 +232,8 @@ namespace criollo
             m_Settings.RuntimePath = runtimePath;
             m_Settings.AssemblyPath = assemblyPath;
         }
-        return m_Impl->host.Initialize(m_Settings.RuntimePath, m_Settings.AssemblyPath);
+
+        return m_Impl->host.Initialize(m_Settings.RuntimePath, m_Settings.AssemblyPath, m_Settings.AppDomainName);
     }
 
     bool CoreCLRHostAPI::Initialize()
@@ -252,7 +243,7 @@ namespace criollo
             std::println("[CoreCLRHostAPI] Error: RuntimePath and AssemblyPath must be set before calling Initialize()");
             return false;
         }
-        return m_Impl->host.Initialize(m_Settings.RuntimePath, m_Settings.AssemblyPath);
+        return m_Impl->host.Initialize(m_Settings.RuntimePath, m_Settings.AssemblyPath, m_Settings.AppDomainName);
     }
 
     void CoreCLRHostAPI::Shutdown()
@@ -287,12 +278,12 @@ namespace criollo
     }
 
     // Factory functions
-    extern "C" CRIOLLO_API CoreCLRHostAPI* CreateCoreRuntimeHost()
+    extern "C" MOCHISHARP_API CoreCLRHostAPI* CreateCoreRuntimeHost()
     {
         return new CoreCLRHostAPI();
     }
 
-    extern "C" CRIOLLO_API CoreCLRHostAPI* CreateCoreRuntimeHostWithSettings(const char* runtimePath, const char* assemblyPath, const char* appDomainName)
+    extern "C" MOCHISHARP_API CoreCLRHostAPI* CreateCoreRuntimeHostWithSettings(const char* runtimePath, const char* assemblyPath, const char* appDomainName)
     {
         HostSettings settings;
         if (runtimePath) settings.RuntimePath = runtimePath;
@@ -301,7 +292,7 @@ namespace criollo
         return new CoreCLRHostAPI(settings);
     }
 
-    extern "C" CRIOLLO_API void DestroyCoreRuntimeHost(CoreCLRHostAPI* host)
+    extern "C" MOCHISHARP_API void DestroyCoreRuntimeHost(CoreCLRHostAPI* host)
     {
         delete host;
     }

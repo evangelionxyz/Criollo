@@ -1,4 +1,4 @@
-workspace "Criollo"
+workspace "MochiSharp"
     flags { "MultiProcessorCompile" }
     configurations {
         "Debug",
@@ -14,6 +14,8 @@ workspace "Criollo"
     INTOUTPUT_DIR = "%{wks.location}/bin/objs/%{cfg.buildcfg}/%{cfg.platform}/%{prj.name}"
 
     -- Projects
-    include "Criollo/criollo.lua"
+    include "MochiSharp.Native/mochisharp-native.lua"
+    include "MochiSharp.Managed/mochisharp-managed.lua"
+    
     include "TestRuntime/test-runtime.lua"
     include "TestScript/test-script.lua"

@@ -13,11 +13,11 @@ project "TestRuntime"
     }
 
     includedirs {
-        "%{wks.location}/Criollo/Source"
+        "%{wks.location}/MochiSharp.Native/Source"
     }
 
     links {
-        "Criollo"
+        "MochiSharp.Native"
     }
 
     filter "system:windows"

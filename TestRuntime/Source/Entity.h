@@ -6,7 +6,7 @@
 #include "Math.h"
 #include <string>
 
-namespace criollo
+namespace test
 {
     struct TransformComponent
     {

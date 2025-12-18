@@ -6,7 +6,7 @@
 #include "Entity.h"
 #include <unordered_map>
 
-namespace criollo
+namespace test
 {
     // Script bindings for Entity system
     class ScriptBindings

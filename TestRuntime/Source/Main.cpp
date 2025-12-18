@@ -20,22 +20,22 @@ typedef void (CORECLR_DELEGATE_CALLTYPE *EntityUpdateDelegate)(uint64_t entityID
 typedef void (CORECLR_DELEGATE_CALLTYPE *EntityStopDelegate)(uint64_t entityID);
 
 // Internal call replacement delegates
-typedef void (CORECLR_DELEGATE_CALLTYPE *Entity_GetTransformDelegate)(uint64_t entityID, criollo::TransformComponent* outTransform);
-typedef void (CORECLR_DELEGATE_CALLTYPE *Entity_SetTransformDelegate)(uint64_t entityID, criollo::TransformComponent* transform);
+typedef void (CORECLR_DELEGATE_CALLTYPE *Entity_GetTransformDelegate)(uint64_t entityID, test::TransformComponent* outTransform);
+typedef void (CORECLR_DELEGATE_CALLTYPE *Entity_SetTransformDelegate)(uint64_t entityID, test::TransformComponent* transform);
 typedef bool (CORECLR_DELEGATE_CALLTYPE *Entity_HasComponentDelegate)(uint64_t entityID, const char* componentType);
 typedef void (CORECLR_DELEGATE_CALLTYPE *LogDelegate)(const char* message);
 typedef int (CORECLR_DELEGATE_CALLTYPE *DescribeTypeDelegate)(const char* typeName, char* buffer, int bufferSize);
 
-void TestEntitySystem(criollo::CoreCLRHostAPI* host)
+void TestEntitySystem(mochi::CoreCLRHostAPI* host)
 {
     std::println("\n----- Entity Component System Test -----");
 
 	// Create entity manager
-	criollo::EntityManager entityManager;
+	test::EntityManager entityManager;
 	entityManager.Initialize();
 
 	// Create entities
-	criollo::Entity* player = entityManager.CreateEntity("Player");
+	test::Entity* player = entityManager.CreateEntity("Player");
 	player->transform.position = { 0.0f, 0.0f, 0.0f };
 
 	const char* TestAppDLLName = "TestScript";
@@ -62,9 +62,9 @@ void TestEntitySystem(criollo::CoreCLRHostAPI* host)
     else
     {
         // Create our C++ implementation delegate
-        Entity_GetTransformDelegate getTransformImpl = [](uint64_t entityID, criollo::TransformComponent *outTransform)
+        Entity_GetTransformDelegate getTransformImpl = [](uint64_t entityID, test::TransformComponent *outTransform)
         {
-            criollo::ScriptBindings::Entity_GetTransform(entityID, outTransform);
+            test::ScriptBindings::Entity_GetTransform(entityID, outTransform);
         };
         setGetTransformDelegate(getTransformImpl);
         std::println("Entity_GetTransform initialized!");
@@ -77,9 +77,9 @@ void TestEntitySystem(criollo::CoreCLRHostAPI* host)
     else
     {
         // Create our C++ implementation delegate
-        Entity_SetTransformDelegate setTransformImpl = [](uint64_t entityID, criollo::TransformComponent *transform)
+        Entity_SetTransformDelegate setTransformImpl = [](uint64_t entityID, test::TransformComponent *transform)
         {
-            criollo::ScriptBindings::Entity_SetTransform(entityID, transform);
+            test::ScriptBindings::Entity_SetTransform(entityID, transform);
         };
         setSetTransformDelegate(setTransformImpl);
         std::println("Entity_SetTransform initialized!");
@@ -252,7 +252,7 @@ void TestEntitySystem(criollo::CoreCLRHostAPI* host)
 
 int main()
 {
-	const std::string dllName = "Criollo.dll";
+	const std::string dllName = "MochiSharp.Native.dll";
     HMODULE hCoreDll = LoadLibraryA(dllName.c_str());
     if (!hCoreDll)
     {
@@ -286,26 +286,22 @@ int main()
     }
 
     // Option 1: Using factory function with settings
-    typedef criollo::CoreCLRHostAPI* (*CreateCoreRuntimeHostWithSettingsFunc)(const char*, const char*, const char*);
-    typedef void (*DestroyCoreRuntimeHostFunc)(criollo::CoreCLRHostAPI*);
+    typedef mochi::CoreCLRHostAPI* (*CreateCoreRuntimeHostWithSettingsFunc)(const char*, const char*, const char*);
+    typedef void (*DestroyCoreRuntimeHostFunc)(mochi::CoreCLRHostAPI*);
 
     auto CreateCoreRuntimeHostWithSettings = reinterpret_cast<CreateCoreRuntimeHostWithSettingsFunc>(GetProcAddress(hCoreDll, "CreateCoreRuntimeHostWithSettings"));
     auto DestroyCoreRuntimeHost = reinterpret_cast<DestroyCoreRuntimeHostFunc>(GetProcAddress(hCoreDll, "DestroyCoreRuntimeHost"));
 
     if (!CreateCoreRuntimeHostWithSettings || !DestroyCoreRuntimeHost)
     {
-    	std::println("Failed to get factory functions from Criollo.dll");
+    	std::println("Failed to get factory functions from {}", dllName);
         FreeLibrary(hCoreDll);
         return 1;
     }
 
     // Create the CoreCLR host with settings
 	std::println("Creating CoreCLR host with settings");
-    criollo::CoreCLRHostAPI* host = CreateCoreRuntimeHostWithSettings(
-        runtimePath.c_str(), 
-        assemblyPath.c_str(), 
-        "CriolloHost"
-    );
+    mochi::CoreCLRHostAPI* host = CreateCoreRuntimeHostWithSettings(runtimePath.c_str(), assemblyPath.c_str(), "MochiSharpHost");
     
     if (!host)
     {

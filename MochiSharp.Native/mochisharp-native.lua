@@ -1,5 +1,5 @@
-project "Criollo"
-    location "%{wks.location}/Criollo"
+project "MochiSharp.Native"
+    location "%{wks.location}/MochiSharp.Native"
     kind "SharedLib"
     language "C++"
     cppdialect "c++23"
@@ -22,7 +22,7 @@ project "Criollo"
             "_WINDOWS",
             "WIN32",
             "WIN32_LEAN_AND_MEAN",
-            "CRIOLLOCORE_EXPORTS",
+            "MOCHISHARP_EXPORTS",
             "_CRT_SECURE_NO_WARNINGS"
         }
 
@@ -32,7 +32,7 @@ project "Criollo"
         symbols "on"
         defines {
             "_DEBUG",
-            "CRIOLLO_DEBUG"
+            "MOCHI_DEBUG"
         }
 
     filter "configurations:Release"
