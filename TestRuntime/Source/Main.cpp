@@ -14,13 +14,7 @@
 typedef bool (*InitializeCoreRuntimeFunc)(const char*, const char*);
 typedef void (*ShutdownCoreRuntimeFunc)();
 typedef bool (*ExecuteManagedAssemblyFunc)(const char*);
-typedef bool (*CreateTestMethodDelegateFunc)(void**);
 typedef bool (*CreateManagedDelegateFunc)(const char*, const char*, const char*, void**);
-
-typedef int (CORECLR_DELEGATE_CALLTYPE *TestMethodDelegate)();
-typedef int (CORECLR_DELEGATE_CALLTYPE *AddDelegate)(int, int);
-typedef const char* (CORECLR_DELEGATE_CALLTYPE *GreetDelegate)(const char*);
-typedef void (CORECLR_DELEGATE_CALLTYPE *LogMessageDelegate)(const char*);
 
 // Entity lifecycle delegates
 typedef void (CORECLR_DELEGATE_CALLTYPE *EntityStartDelegate)(uint64_t entityID);
@@ -32,38 +26,6 @@ typedef void (CORECLR_DELEGATE_CALLTYPE *Entity_GetTransformDelegate)(uint64_t e
 typedef void (CORECLR_DELEGATE_CALLTYPE *Entity_SetTransformDelegate)(uint64_t entityID, criollo::TransformComponent* transform);
 typedef bool (CORECLR_DELEGATE_CALLTYPE *Entity_HasComponentDelegate)(uint64_t entityID, const char* componentType);
 typedef void (CORECLR_DELEGATE_CALLTYPE *LogDelegate)(const char* message);
-
-void TestBasicFunctionality(CreateManagedDelegateFunc CreateManagedDelegate)
-{
-    const char *TestAppDLLName = "TestScript";
-    const char *TestClassName = "TestScript.Core.Test";
-
-    // Example 1: Call TestMethod
-    TestMethodDelegate testMethod = nullptr;
-    if (CreateManagedDelegate(TestAppDLLName, TestClassName, "TestMethod", (void **)(&testMethod)) && testMethod)
-    {
-        std::println("[Example 1] Calling TestMethod()");
-        int result = testMethod();
-        std::println("Result: {}", result);
-    }
-
-    // Example 2: Call Add method with parameters
-    AddDelegate addFunc = nullptr;
-    if (CreateManagedDelegate(TestAppDLLName, TestClassName, "Add", (void **)(&addFunc)) && addFunc)
-    {
-        std::println("[Example 2] Calling Add(10, 32):");
-        int sum = addFunc(10, 32);
-        std::println("Result: {}", sum);
-    }
-
-    // Example 3: Call LogMessage (void return)
-    LogMessageDelegate logFunc = nullptr;
-    if (CreateManagedDelegate(TestAppDLLName, TestClassName, "LogMessage", (void **)(&logFunc)) && logFunc)
-    {
-        std::println("[Example 3] Calling LogMessage()");
-        logFunc("This is a message from C++ to C#");
-    }
-}
 
 void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 {
@@ -78,7 +40,7 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	player->transform.position = { 0.0f, 0.0f, 0.0f };
 
 	const char* TestAppDLLName = "TestScript";
-	const char* EntityBridgeClassName = "TestScript.Scene.EntityBridge";
+	const char* EntityBridgeClassName = "TestScript.Core.EntityBridge";
 	const char* InternalCallsClassName = "TestScript.Core.InternalCalls";
 
 	// Initialize internal call delegates (C++ -> C# property setters)
@@ -310,8 +272,7 @@ int main()
         FreeLibrary(hCoreDll);
         return 1;
     }
-
-    TestBasicFunctionality(CreateManagedDelegate);
+    
     TestEntitySystem(CreateManagedDelegate);
 
     // Shutdown

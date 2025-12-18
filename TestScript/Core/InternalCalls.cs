@@ -24,19 +24,18 @@ namespace TestScript.Core
         {
             get
             {
-                return Entity_GetTransform != null &&
-                       Entity_SetTransform != null;
+                return Entity_GetTransform != null && Entity_SetTransform != null;
             }
         }
 
         // Clear all delegates (called before shutdown)
         public static void ClearDelegates()
         {
-            Console.WriteLine("[InternalCalls] Clearing all delegates...");
             Entity_GetTransform = null;
             Entity_SetTransform = null;
             Entity_HasComponent = null;
             Log = null;
+
             Console.WriteLine("[InternalCalls] All delegates cleared");
         }
     }

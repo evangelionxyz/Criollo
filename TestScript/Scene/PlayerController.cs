@@ -1,7 +1,5 @@
-// Copyright (c) 2025 Evangelion Manuhutu
-
-using System;
 using TestScript.Mathf;
+using TestScript.Core;
 
 namespace TestScript.Scene
 {
@@ -10,19 +8,16 @@ namespace TestScript.Scene
         private float speed = 1.0f;
         private float time = 0.0f;
 
-        // Constructor for reflection-based instantiation
         public PlayerController(ulong id) : base(id) { }
-
-        // Parameterless constructor (required for some reflection scenarios)
         private PlayerController() : base(0) { }
 
         public override void Start()
         {
-            Log("PlayerController started!");
+            Debug.Log("PlayerController started!");
             
             // Get initial transform
             var transform = Transform;
-            Log($"Initial Position: {transform.Position}");
+            Debug.Log($"Initial Position: {transform.Position}");
         }
 
         public override void Update(float deltaTime)
@@ -45,9 +40,9 @@ namespace TestScript.Scene
 
         public override void Stop()
         {
-            Log("PlayerController stopped!");
+            Debug.Log("PlayerController stopped!");
             var transform = Transform;
-            Log($"Final Position: {transform.Position}");
+            Debug.Log($"Final Position: {transform.Position}");
         }
     }
 
@@ -64,7 +59,7 @@ namespace TestScript.Scene
 
         public override void Start()
         {
-            Log("RotatingEntity started!");
+            Debug.Log("RotatingEntity started!");
         }
 
         public override void Update(float deltaTime)
@@ -80,7 +75,7 @@ namespace TestScript.Scene
 
         public override void Stop()
         {
-            Log("RotatingEntity stopped!");
+            Debug.Log("RotatingEntity stopped!");
         }
     }
 }

@@ -1,124 +1,18 @@
-// Copyright (c) 2025 Evangelion Manuhutu
+﻿using TestScript.Scene;
 
-using System;
-using TestScript.Core;
-using TestScript.Mathf;
-
-namespace TestScript.Scene
+namespace TestScript.Core
 {
-    public struct Transform
-    {
-        public Vector3 Position;
-        public Vector3 Rotation;
-        public Vector3 Scale;
-
-        public Transform(Vector3 position, Vector3 rotation, Vector3 scale)
-        {
-            Position = position;
-            Rotation = rotation;
-            Scale = scale;
-        }
-
-        public static Transform Identity => new Transform(Vector3.Zero, Vector3.Zero, Vector3.One);
-    }
-
-    public class Entity
-    {
-        public readonly ulong ID;
-
-        // Internal constructor for EntityBridge
-        internal Entity(ulong id)
-        {
-            ID = id;
-        }
-
-        // Default constructor for derived classes
-        protected Entity()
-        {
-            ID = 0;
-        }
-
-        // Transform property with internal calls to C++
-        public Transform Transform
-        {
-            get
-            {
-                if (InternalCalls.Entity_GetTransform != null)
-                {
-                    InternalCalls.Entity_GetTransform(ID, out Transform transform);
-                    return transform;
-                }
-                // Return identity transform if not connected to C++
-                return Transform.Identity;
-            }
-            set
-            {
-                if (InternalCalls.Entity_SetTransform != null)
-                {
-                    InternalCalls.Entity_SetTransform(ID, ref value);
-                }
-            }
-        }
-
-        // Lifecycle methods - to be overridden by derived classes
-        public virtual void Start() { }
-        public virtual void Update(float deltaTime) { }
-        public virtual void Stop() { }
-
-        // Internal factory method for EntityBridge
-        internal static Entity CreateInstance(ulong id, Type type)
-        {
-            var instance = Activator.CreateInstance(type, true) as Entity;
-            if (instance != null)
-            {
-                // Use reflection to set the readonly ID field
-                var field = typeof(Entity).GetField(nameof(ID));
-                if (field != null)
-                {
-                    var fieldInfo = typeof(Entity).GetField("<ID>k__BackingField",
-                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                    if (fieldInfo != null)
-                    {
-                        fieldInfo.SetValue(instance, id);
-                    }
-                }
-
-                // Alternative: Use Unsafe or RuntimeHelpers
-                // For now, we'll need derived classes to call base(id)
-            }
-            return instance;
-        }
-    }
-
-    // Base class for user scripts
-    public abstract class ScriptableEntity : Entity
-    {
-        // Constructor that ensures ID is set
-        protected ScriptableEntity(ulong id) : base(id) { }
-
-        // Default constructor for reflection
-        protected ScriptableEntity() : base(0) { }
-
-        // Helper methods for common operations
-        protected void Log(string message)
-        {
-            Console.WriteLine($"[Entity {ID}] {message}");
-        }
-    }
-
     // Static bridge for C++ to call into entity instances
     public static class EntityBridge
     {
         private static Dictionary<ulong, Entity> _sEntities = new Dictionary<ulong, Entity>();
 
-        // Register an entity instance
         public static void RegisterEntity(ulong entityId, Entity entity)
         {
             _sEntities[entityId] = entity;
             Console.WriteLine($"[EntityBridge] Registered entity {entityId}");
         }
 
-        // Unregister an entity instance
         public static void UnregisterEntity(ulong entityId)
         {
             if (_sEntities.Remove(entityId))
