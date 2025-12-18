@@ -3,7 +3,10 @@
 #ifndef CORECLR_HOST_H
 #define CORECLR_HOST_H
 
-#include "pch.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include <string>
 #include <vector>
 

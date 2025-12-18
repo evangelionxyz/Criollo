@@ -16,7 +16,8 @@ jobs:
         platform: [x64]
 
     env:
-      SOLUTION_FILE: Criollo.slnx
+      SOLUTION_FILE: Criollo.sln
+      PREMAKE_VERSION: 5.0.0-beta7
 
     steps:
       - name: Checkout repository (with submodules)
@@ -24,13 +25,32 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup .NET 10 SDK
+      - name: Setup .NET 9 SDK
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '9.0.x'
 
-      - name: Setup MSBuild (Visual Studio 2026 Preview)
+      - name: Setup MSBuild (Visual Studio 2022)
         uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: '[17.14]'
+
+      - name: Install Premake
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = "${{ env.PREMAKE_VERSION }}"
+          $zipUrl = "https://github.com/premake/premake-core/releases/download/v$version/premake-$version-windows.zip"
+          $dst = "$PWD/tools"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          $zipPath = "$dst/premake.zip"
+          Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath $dst -Force
+          "$dst" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Generate solution with Premake
+        shell: pwsh
+        run: premake5 vs2022
 
       - name: Restore NuGet packages
         shell: pwsh

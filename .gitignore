@@ -1,4 +1,12 @@
 .vs
+.idea
 obj/
 bin/
 bin-int/
+
+**.csproj
+**vcxproj
+*.csproj
+*.vcxproj
+*.slnx
+*.sln

@@ -1,73 +1,73 @@
+using System;
 using TestScript.Core;
 
-namespace TestScript.Scene
+namespace TestScript.Scene;
+
+public class Entity
 {
-    public class Entity
+    public readonly ulong ID;
+
+    internal Entity(ulong id)
     {
-        public readonly ulong ID;
+        ID = id;
+    }
 
-        internal Entity(ulong id)
-        {
-            ID = id;
-        }
+    protected Entity()
+    {
+        ID = 0;
+    }
 
-        protected Entity()
+    public Transform Transform
+    {
+        get
         {
-            ID = 0;
-        }
-
-        public Transform Transform
-        {
-            get
+            if (InternalCalls.Entity_GetTransform != null)
             {
-                if (InternalCalls.Entity_GetTransform != null)
-                {
-                    InternalCalls.Entity_GetTransform(ID, out Transform transform);
-                    return transform;
-                }
+                InternalCalls.Entity_GetTransform(ID, out Transform transform);
+                return transform;
+            }
 
-                // Return identity transform if not connected to C++
-                return Transform.Identity;
-            }
-            set
-            {
-                InternalCalls.Entity_SetTransform?.Invoke(ID, ref value);
-            }
+            // Return identity transform if not connected to C++
+            return Transform.Identity;
         }
-
-        // Lifecycle methods - to be overridden by derived classes
-        public virtual void Start() { }
-        public virtual void Update(float deltaTime) { }
-        public virtual void Stop() { }
-
-        // Internal factory method for EntityBridge
-        internal static Entity CreateInstance(ulong id, Type type)
+        set
         {
-            var instance = Activator.CreateInstance(type, true) as Entity;
-            if (instance != null)
-            {
-                // Use reflection to set the readonly ID field
-                var field = typeof(Entity).GetField(nameof(ID));
-                if (field != null)
-                {
-                    var fieldInfo = typeof(Entity).GetField("<ID>k__BackingField",
-                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-                    if (fieldInfo != null)
-                    {
-                        fieldInfo.SetValue(instance, id);
-                    }
-                }
-
-                // Alternative: Use Unsafe or RuntimeHelpers
-                // For now, we'll need derived classes to call base(id)
-            }
-            return instance;
+            InternalCalls.Entity_SetTransform?.Invoke(ID, ref value);
         }
     }
 
-    public abstract class ScriptableEntity : Entity
+    // Lifecycle methods - to be overridden by derived classes
+    public virtual void Start() { }
+    public virtual void Update(float deltaTime) { }
+    public virtual void Stop() { }
+
+    // Internal factory method for EntityBridge
+    internal static Entity CreateInstance(ulong id, Type type)
     {
-        protected ScriptableEntity(ulong id) : base(id) { }
-        protected ScriptableEntity() : base(0) { }
+        var instance = Activator.CreateInstance(type, true) as Entity;
+        if (instance != null)
+        {
+            // Use reflection to set the readonly ID field
+            var field = typeof(Entity).GetField(nameof(ID));
+            if (field != null)
+            {
+                var fieldInfo = typeof(Entity).GetField("<ID>k__BackingField",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                if (fieldInfo != null)
+                {
+                    fieldInfo.SetValue(instance, id);
+                }
+            }
+
+            // Alternative: Use Unsafe or RuntimeHelpers
+            // For now, we'll need derived classes to call base(id)
+        }
+        return instance!;
     }
+}
+
+public abstract class ScriptableEntity : Entity
+{
+    protected ScriptableEntity(ulong id) : base(id) { }
+    protected ScriptableEntity() : base(0) { }
 }

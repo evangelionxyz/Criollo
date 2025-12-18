@@ -1,7 +1,5 @@
 // Copyright (c) 2025 Evangelion Manuhutu
 
-#include "pch.h"
-
 #include "CoreCLRHost.h"
 #include <filesystem>
 #include <iostream>
