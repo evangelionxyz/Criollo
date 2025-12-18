@@ -26,6 +26,75 @@ typedef bool (CORECLR_DELEGATE_CALLTYPE *Entity_HasComponentDelegate)(uint64_t e
 typedef void (CORECLR_DELEGATE_CALLTYPE *LogDelegate)(const char* message);
 typedef int (CORECLR_DELEGATE_CALLTYPE *DescribeTypeDelegate)(const char* typeName, char* buffer, int bufferSize);
 
+void LoadGameScripts(mochi::CoreCLRHostAPI* host, const std::string& assemblyPath)
+{
+    std::println("Loading game scripts via ScriptManager");
+
+    typedef bool (CORECLR_DELEGATE_CALLTYPE* LoadScriptsDelegate)(const char* assemblyPath);
+    typedef bool (CORECLR_DELEGATE_CALLTYPE* IsLoadedDelegate)();
+
+    LoadScriptsDelegate loadScripts = nullptr;
+    IsLoadedDelegate isLoaded = nullptr;
+
+    const char* ManagedDLLName = "MochiSharp.Managed";
+    const char* ScriptManagerClassName = "MochiSharp.Managed.Core.ScriptManager";
+
+    // Create LoadScripts delegate
+    if (!host->CreateDelegate(ManagedDLLName, ScriptManagerClassName, "LoadScripts", (void**)&loadScripts))
+    {
+        std::println("Failed to create LoadScripts delegate");
+        return;
+    }
+
+    // Load the scripts
+    if (loadScripts(assemblyPath.c_str()))
+    {
+        std::println("Scripts loaded successfully");
+        // Verify if scripts are loaded
+        if (host->CreateDelegate(ManagedDLLName, ScriptManagerClassName, "IsLoaded", (void**)&isLoaded))
+        {
+            if (isLoaded())
+            {
+                std::println("ScriptManager reports scripts are loaded");
+            }
+            else
+            {
+                std::println("ScriptManager reports scripts are NOT loaded");
+            }
+        }
+        else
+        {
+            std::println("Failed to create IsLoaded delegate");
+        }
+    }
+    else
+    {
+        std::println("Failed to load scripts from {}", assemblyPath);
+    }
+}
+
+void UnloadGameScripts(mochi::CoreCLRHost* host)
+{
+    std::println("Unloading game scripts via ScriptManager");
+
+    typedef void (CORECLR_DELEGATE_CALLTYPE* UnloadScriptsDelegate)();
+    UnloadScriptsDelegate unloadScripts = nullptr;
+    
+    const char* ManagedDLLName = "MochiSharp.Managed";
+    const char* ScriptManagerClassName = "MochiSharp.Managed.Core.ScriptManager";
+    
+    // Create UnloadScripts delegate
+    if (!host->CreateDelegate(ManagedDLLName, ScriptManagerClassName, "UnloadScripts", (void**)&unloadScripts))
+    {
+        std::println("Failed to create UnloadScripts delegate");
+        return;
+    }
+    
+    // Unload the scripts
+    unloadScripts();
+    std::println("Scripts unloaded successfully");
+}
+
 void TestEntitySystem(mochi::CoreCLRHostAPI* host)
 {
     std::println("\n----- Entity Component System Test -----");
@@ -144,7 +213,7 @@ void TestEntitySystem(mochi::CoreCLRHostAPI* host)
     std::println("Successfully created all entity lifecycle delegates!");
 
 	// Dump managed metadata for the target script type
-	logTypeMetadata("TestScript.Scene.PlayerController");
+	logTypeMetadata("Game.PlayerController");
 
 	// Create entity instance in C# (using EntityBridge)
 	typedef void (CORECLR_DELEGATE_CALLTYPE *CreateEntityInstanceDelegate)(uint64_t entityID, const char* typeName);
@@ -153,8 +222,8 @@ void TestEntitySystem(mochi::CoreCLRHostAPI* host)
 	
     if (host->CreateDelegate(ManagedDLLName, EntityBridgeClassName, "CreateEntityInstance", (void **)(&createInstanceDelegate)))
     {
-        std::println("Calling CreateEntityInstance with ID={}, Type={}", player->id, "TestScript.Scene.PlayerController");
-        createInstanceDelegate(player->id, "TestScript.Scene.PlayerController");
+        std::println("Calling CreateEntityInstance with ID={}, Type={}", player->id, "Game.PlayerController");
+        createInstanceDelegate(player->id, "Game.PlayerController");
         std::println("CreateEntityInstance completed");
     }
 	else
@@ -168,7 +237,7 @@ void TestEntitySystem(mochi::CoreCLRHostAPI* host)
 	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
 	// Attach script to entity
-	entityManager.AttachScript(player->id, "TestScript.Scene.PlayerController", nullptr);
+	entityManager.AttachScript(player->id, "Game.PlayerController", nullptr);
 	
 	// Set the delegates for the script
 	entityManager.SetScriptDelegates(player->id, startDelegate, updateDelegate, stopDelegate);
@@ -321,6 +390,9 @@ int main()
         return 1;
     }
 
+    // Explicit loading with hot-reload capability
+    std::string scriptPath = std::filesystem::current_path().string() + "\\Game.dll"; 
+    LoadGameScripts(host, scriptPath);
     TestEntitySystem(host);
 
     // Shutdown

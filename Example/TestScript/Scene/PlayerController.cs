@@ -3,7 +3,7 @@ using MochiSharp.Managed.Mathf;
 using MochiSharp.Managed.Scene;
 using MochiSharp.Managed.Core;
 
-namespace TestScript.Scene;
+namespace Game;
 
 public class PlayerController : ScriptableEntity
 {

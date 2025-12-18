@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
 
@@ -10,34 +11,42 @@ namespace MochiSharp.Managed.Core;
 /// </summary>
 public class ScriptLoadContext : AssemblyLoadContext
 {
-    private readonly AssemblyDependencyResolver _resolver;
+    private readonly string _assemblyDirectory;
 
     public ScriptLoadContext(string assemblyPath) : base(isCollectible: true)
     {
-        _resolver = new AssemblyDependencyResolver(assemblyPath);
+        _assemblyDirectory = Path.GetDirectoryName(assemblyPath) ?? string.Empty;
     }
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        // Allow MochiSharp.Managed to be shared between contexts
-        if (assemblyName.Name == "MochiSharp.Managed")
+        // Allow MochiSharp.Managed and system assemblies to be shared between contexts
+        if (assemblyName.Name == "MochiSharp.Managed" ||
+            assemblyName.Name?.StartsWith("System") == true ||
+            assemblyName.Name?.StartsWith("Microsoft") == true ||
+            assemblyName.Name == "netstandard" ||
+            assemblyName.Name == "mscorlib")
         {
             return null; // Use default context's version
         }
 
-        string? assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
-        if (assemblyPath != null)
+        // Try to find the assembly in the script directory
+        string assemblyPath = Path.Combine(_assemblyDirectory, assemblyName.Name + ".dll");
+        if (File.Exists(assemblyPath))
         {
+            Debug.Log($"[ScriptLoadContext] Loading dependency: {assemblyName.Name}");
             return LoadFromAssemblyPath(assemblyPath);
         }
 
+        // Let default context handle it
         return null;
     }
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
     {
-        string? libraryPath = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
-        if (libraryPath != null)
+        // Try to find the unmanaged DLL in the script directory
+        string libraryPath = Path.Combine(_assemblyDirectory, unmanagedDllName);
+        if (File.Exists(libraryPath))
         {
             return LoadUnmanagedDllFromPath(libraryPath);
         }
@@ -65,6 +74,17 @@ public class ScriptAssemblyManager
         {
             Debug.Log($"[ScriptAssemblyManager] Loading script assembly from: {assemblyPath}");
 
+            // Validate path
+            if (!System.IO.File.Exists(assemblyPath))
+            {
+                Debug.LogError($"[ScriptAssemblyManager] Assembly file not found: {assemblyPath}");
+                return null;
+            }
+
+            // Get absolute path
+            assemblyPath = System.IO.Path.GetFullPath(assemblyPath);
+            Debug.Log($"[ScriptAssemblyManager] Absolute path: {assemblyPath}");
+
             // Create a new load context for this assembly
             _loadContext = new ScriptLoadContext(assemblyPath);
             _scriptAssembly = _loadContext.LoadFromAssemblyPath(assemblyPath);
@@ -74,7 +94,12 @@ public class ScriptAssemblyManager
         }
         catch (Exception ex)
         {
-            Debug.Log($"[ScriptAssemblyManager] Failed to load script assembly: {ex.Message}");
+            Debug.LogError($"[ScriptAssemblyManager] Failed to load script assembly: {ex.Message}");
+            Debug.LogError($"[ScriptAssemblyManager] Stack trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Debug.LogError($"[ScriptAssemblyManager] Inner exception: {ex.InnerException.Message}");
+            }
             return null;
         }
     }
@@ -89,14 +114,27 @@ public class ScriptAssemblyManager
             Debug.Log("[ScriptAssemblyManager] Unloading script assembly context...");
             
             _scriptAssembly = null;
+            
+            // Create a weak reference to track when the context is actually collected
+            var weakRef = new WeakReference(_loadContext);
             _loadContext.Unload();
             _loadContext = null;
 
             // Force garbage collection to ensure context is cleaned up
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
+            for (int i = 0; i < 3 && weakRef.IsAlive; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
             
-            Debug.Log("[ScriptAssemblyManager] Script assembly context unloaded");
+            if (weakRef.IsAlive)
+            {
+                Debug.LogWarning("[ScriptAssemblyManager] Script context may still be alive after unload");
+            }
+            else
+            {
+                Debug.Log("[ScriptAssemblyManager] Script assembly context unloaded successfully");
+            }
         }
     }
 

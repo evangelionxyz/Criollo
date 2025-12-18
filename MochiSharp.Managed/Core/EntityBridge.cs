@@ -31,11 +31,40 @@ public static class EntityBridge
         {
             Console.WriteLine($"[EntityBridge] Attempting to create entity instance: ID={entityId}, Type={typeName}");
 
-            // Try to find and instantiate the type using reflection
-            var type = Type.GetType(typeName);
+            // First try to find the type through ScriptManager (for isolated assemblies)
+            Type? type = ScriptManager.FindType(typeName);
+            
+            // If not found, try default context
             if (type == null)
             {
-                Console.WriteLine($"[EntityBridge] Warning: Type '{typeName}' not found, creating base Entity");
+                Console.WriteLine($"[EntityBridge] Type not found via ScriptManager, trying default context...");
+                type = Type.GetType(typeName);
+            }
+            
+            // If still not found, search all loaded assemblies as fallback
+            if (type == null)
+            {
+                Console.WriteLine($"[EntityBridge] Type not found in default context, searching loaded assemblies...");
+                
+                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    type = assembly.GetType(typeName);
+                    if (type != null)
+                    {
+                        Console.WriteLine($"[EntityBridge] Found type in assembly: {assembly.FullName}");
+                        break;
+                    }
+                }
+            }
+            
+            if (type == null)
+            {
+                Console.WriteLine($"[EntityBridge] Warning: Type '{typeName}' not found in any loaded assembly, creating base Entity");
+                Console.WriteLine($"[EntityBridge] Available assemblies:");
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    Console.WriteLine($"[EntityBridge]   - {asm.GetName().Name}");
+                }
                 var entity = new Entity(entityId);
                 RegisterEntity(entityId, entity);
                 return;

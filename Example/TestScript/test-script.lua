@@ -1,5 +1,5 @@
-project "TestScript"
-    location "%{wks.location}/TestScript"
+project "Game"
+    location "%{wks.location}/Example/TestScript"
     kind "SharedLib"
     language "C#"
     dotnetframework "net9.0"
@@ -9,9 +9,7 @@ project "TestScript"
     objdir (INTOOUTPUT_DIR)
 
     files {
-        "Core/**.cs",
-        "Mathf/**.cs",
-        "Scene/**.cs"
+        "**.cs"
     }
 
     links {

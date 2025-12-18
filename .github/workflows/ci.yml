@@ -56,14 +56,6 @@ jobs:
         shell: pwsh
         run: msbuild $env:SOLUTION_FILE /t:Restore /p:Configuration=${{ matrix.configuration }} /p:Platform="${{ matrix.platform }}"
 
-      - name: Restore TestScript dependencies
-        shell: pwsh
-        run: dotnet restore .\TestScript\TestScript.csproj
-
-      - name: Build .NET projects
-        shell: pwsh
-        run: dotnet build .\TestScript\TestScript.csproj --configuration ${{ matrix.configuration }} --no-restore
-
       - name: Build native solution
         shell: pwsh
         run: msbuild $env:SOLUTION_FILE /t:Build /p:Configuration=${{ matrix.configuration }} /p:Platform="${{ matrix.platform }}" /m

@@ -49,7 +49,28 @@ public static class ReflectionBridge
 
     private static TypeMetadata BuildTypeMetadata(string typeName)
     {
-        var type = Type.GetType(typeName);
+        // Try ScriptManager first (for isolated assemblies)
+        var type = ScriptManager.FindType(typeName);
+        
+        // Try default context
+        if (type == null)
+        {
+            type = Type.GetType(typeName);
+        }
+        
+        // If not found, search all loaded assemblies
+        if (type == null)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                type = assembly.GetType(typeName);
+                if (type != null)
+                {
+                    break;
+                }
+            }
+        }
+        
         if (type == null)
         {
             return new TypeMetadata(typeName, typeName, null, Array.Empty<FieldMetadata>(), Array.Empty<MethodMetadata>());
