@@ -12,6 +12,10 @@ project "TestRuntime"
         "Source/**.h"
     }
 
+    includedirs {
+        "%{wks.location}/Criollo/Source"
+    }
+
     links {
         "Criollo"
     }

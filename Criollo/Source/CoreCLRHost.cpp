@@ -20,6 +20,11 @@ namespace criollo
     {
     }
 
+    CoreCLRHost::~CoreCLRHost()
+    {
+        Shutdown();
+    }
+
     bool CoreCLRHost::Initialize(const std::string& runtimePath, const std::string& assemblyPath)
     {
         if (m_HostHandle != nullptr)
@@ -64,10 +69,10 @@ namespace criollo
         const std::string appPath = GetDirectory(assemblyPath);
 
         // Diagnostics
-        std::cout << "[CoreCLRHost] runtimePath=" << runtimePath << std::endl;
-        std::cout << "[CoreCLRHost] assemblyPath=" << assemblyPath << std::endl;
-        std::cout << "[CoreCLRHost] appPath=" << appPath << std::endl;
-        std::cout << "[CoreCLRHost] TPA length=" << tpaList.size() << std::endl;
+        std::println("[CoreCLRHost] runtimePath={}", runtimePath);
+        std::println("[CoreCLRHost] assemblyPath={}", assemblyPath);
+        std::println("[CoreCLRHost] appPath={}", appPath);
+        std::println("[CoreCLRHost] TPA length={}", tpaList.size());
 
         // Define CoreCLR properties
         std::vector<const char*> propertyKeys = {
@@ -203,5 +208,101 @@ namespace criollo
         {
             // Ignore filesystem errors
         }
+    }
+
+    // ===== CoreCLRHostAPI Implementation (Pimpl Pattern) =====
+
+    struct CoreCLRHostAPI::Implementation
+    {
+        CoreCLRHost host;
+    };
+
+    CoreCLRHostAPI::CoreCLRHostAPI()
+        : m_Impl(new Implementation())
+        , m_Settings()
+    {
+    }
+
+    CoreCLRHostAPI::CoreCLRHostAPI(const HostSettings& settings)
+        : m_Impl(new Implementation())
+        , m_Settings(settings)
+    {
+    }
+
+    CoreCLRHostAPI::~CoreCLRHostAPI()
+    {
+        delete m_Impl;
+    }
+
+    bool CoreCLRHostAPI::Initialize(const char* runtimePath, const char* assemblyPath)
+    {
+        // Update settings if provided
+        if (runtimePath && assemblyPath)
+        {
+            m_Settings.RuntimePath = runtimePath;
+            m_Settings.AssemblyPath = assemblyPath;
+        }
+        return m_Impl->host.Initialize(m_Settings.RuntimePath, m_Settings.AssemblyPath);
+    }
+
+    bool CoreCLRHostAPI::Initialize()
+    {
+        if (m_Settings.RuntimePath.empty() || m_Settings.AssemblyPath.empty())
+        {
+            std::println("[CoreCLRHostAPI] Error: RuntimePath and AssemblyPath must be set before calling Initialize()");
+            return false;
+        }
+        return m_Impl->host.Initialize(m_Settings.RuntimePath, m_Settings.AssemblyPath);
+    }
+
+    void CoreCLRHostAPI::Shutdown()
+    {
+        m_Impl->host.Shutdown();
+    }
+
+    bool CoreCLRHostAPI::ExecuteAssembly(const char* assemblyPath)
+    {
+        unsigned int exitCode = 0;
+        return m_Impl->host.ExecuteAssembly(assemblyPath, 0, nullptr, &exitCode);
+    }
+
+    bool CoreCLRHostAPI::CreateDelegate(const char* assemblyName, const char* typeName, const char* methodName, void** outDelegate)
+    {
+        if (!outDelegate || !assemblyName || !typeName || !methodName)
+        {
+            return false;
+        }
+
+        return m_Impl->host.CreateDelegate(assemblyName, typeName, methodName, outDelegate);
+    }
+
+    bool CoreCLRHostAPI::IsInitialized() const
+    {
+        return m_Impl->host.IsInitialized();
+    }
+
+    const HostSettings& CoreCLRHostAPI::GetSettings() const
+    {
+        return m_Settings;
+    }
+
+    // Factory functions
+    extern "C" CRIOLLO_API CoreCLRHostAPI* CreateCoreRuntimeHost()
+    {
+        return new CoreCLRHostAPI();
+    }
+
+    extern "C" CRIOLLO_API CoreCLRHostAPI* CreateCoreRuntimeHostWithSettings(const char* runtimePath, const char* assemblyPath, const char* appDomainName)
+    {
+        HostSettings settings;
+        if (runtimePath) settings.RuntimePath = runtimePath;
+        if (assemblyPath) settings.AssemblyPath = assemblyPath;
+        if (appDomainName) settings.AppDomainName = appDomainName;
+        return new CoreCLRHostAPI(settings);
+    }
+
+    extern "C" CRIOLLO_API void DestroyCoreRuntimeHost(CoreCLRHostAPI* host)
+    {
+        delete host;
     }
 }

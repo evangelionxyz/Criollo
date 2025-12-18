@@ -4,6 +4,8 @@
 #include "EntityManager.h"
 #include "ScriptBindings.h"
 
+#include "CoreCLRHost.h"
+
 #include <iostream>
 #include <print>
 #include <filesystem>
@@ -11,11 +13,6 @@
 #include <windows.h>
 #include <thread>
 #include <chrono>
-
-typedef bool (*InitializeCoreRuntimeFunc)(const char*, const char*);
-typedef void (*ShutdownCoreRuntimeFunc)();
-typedef bool (*ExecuteManagedAssemblyFunc)(const char*);
-typedef bool (*CreateManagedDelegateFunc)(const char*, const char*, const char*, void**);
 
 // Entity lifecycle delegates
 typedef void (CORECLR_DELEGATE_CALLTYPE *EntityStartDelegate)(uint64_t entityID);
@@ -29,7 +26,7 @@ typedef bool (CORECLR_DELEGATE_CALLTYPE *Entity_HasComponentDelegate)(uint64_t e
 typedef void (CORECLR_DELEGATE_CALLTYPE *LogDelegate)(const char* message);
 typedef int (CORECLR_DELEGATE_CALLTYPE *DescribeTypeDelegate)(const char* typeName, char* buffer, int bufferSize);
 
-void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
+void TestEntitySystem(criollo::CoreCLRHostAPI* host)
 {
     std::println("\n----- Entity Component System Test -----");
 
@@ -58,9 +55,9 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	DescribeTypeDelegate describeTypeDelegate = nullptr;
 	
 	// Create delegates to set the C# delegate properties
-    if (!CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "set_Entity_GetTransform", (void **)(&setGetTransformDelegate)))
+    if (!host->CreateDelegate(TestAppDLLName, InternalCallsClassName, "set_Entity_GetTransform", (void **)(&setGetTransformDelegate)))
     {
-        std::wcerr << L"Failed to create set_Entity_GetTransform delegate" << std::endl;
+        std::println("Failed to create set_Entity_GetTransform delegate");
     }
     else
     {
@@ -73,9 +70,9 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
         std::println("Entity_GetTransform initialized!");
     }
 	
-    if (!CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "set_Entity_SetTransform", (void **)(&setSetTransformDelegate)))
+    if (!host->CreateDelegate(TestAppDLLName, InternalCallsClassName, "set_Entity_SetTransform", (void **)(&setSetTransformDelegate)))
     {
-        std::wcerr << L"Failed to create set_Entity_SetTransform delegate" << std::endl;
+        std::println("Failed to create set_Entity_SetTransform delegate");
     }
     else
     {
@@ -89,9 +86,9 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
     }
 
 	// Managed reflection helper for script metadata
-	if (!CreateManagedDelegate(TestAppDLLName, ReflectionBridgeClassName, "DescribeType", (void**)(&describeTypeDelegate)))
+	if (!host->CreateDelegate(TestAppDLLName, ReflectionBridgeClassName, "DescribeType", (void**)(&describeTypeDelegate)))
 	{
-		std::wcerr << L"Failed to create DescribeType delegate" << std::endl;
+		std::println("Failed to create DescribeType delegate");
 	}
 	else
 	{
@@ -122,23 +119,23 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	EntityUpdateDelegate updateDelegate = nullptr;
 	EntityStopDelegate stopDelegate = nullptr;
 
-	if (!CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "Start", (void**)(&startDelegate)))
+	if (!host->CreateDelegate(TestAppDLLName, EntityBridgeClassName, "Start", (void**)(&startDelegate)))
 	{
-		std::wcerr << L"Failed to create Start delegate" << std::endl;
+		std::println("Failed to create Start delegate");
 		entityManager.Shutdown();
 		return;
 	}
 
-	if (!CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "Update", (void**)(&updateDelegate)))
+	if (!host->CreateDelegate(TestAppDLLName, EntityBridgeClassName, "Update", (void**)(&updateDelegate)))
 	{
-		std::wcerr << L"Failed to create Update delegate" << std::endl;
+		std::println("Failed to create Update delegate");
 		entityManager.Shutdown();
 		return;
 	}
 
-	if (!CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "Stop", (void**)(&stopDelegate)))
+	if (!host->CreateDelegate(TestAppDLLName, EntityBridgeClassName, "Stop", (void**)(&stopDelegate)))
 	{
-		std::wcerr << L"Failed to create Stop delegate" << std::endl;
+		std::println("Failed to create Stop delegate");
 		entityManager.Shutdown();
 		return;
 	}
@@ -152,7 +149,8 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	typedef void (CORECLR_DELEGATE_CALLTYPE *CreateEntityInstanceDelegate)(uint64_t entityID, const char* typeName);
 	CreateEntityInstanceDelegate createInstanceDelegate = nullptr;
 	
-    if (CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "CreateEntityInstance", (void **)(&createInstanceDelegate)))
+	
+    if (host->CreateDelegate(TestAppDLLName, EntityBridgeClassName, "CreateEntityInstance", (void **)(&createInstanceDelegate)))
     {
         std::println("Calling CreateEntityInstance with ID={}, Type={}", player->id, "TestScript.Scene.PlayerController");
         createInstanceDelegate(player->id, "TestScript.Scene.PlayerController");
@@ -220,7 +218,7 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	// Unregister entity from C#
 	typedef void (CORECLR_DELEGATE_CALLTYPE *UnregisterEntityDelegate)(uint64_t entityID);
 	UnregisterEntityDelegate unregisterDelegate = nullptr;
-	if (CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "UnregisterEntity", (void**)(&unregisterDelegate)))
+	if (host->CreateDelegate(TestAppDLLName, EntityBridgeClassName, "UnregisterEntity", (void**)(&unregisterDelegate)))
 	{
 		unregisterDelegate(player->id);
 	}
@@ -231,7 +229,7 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	// Clear EntityBridge dictionary
 	typedef void (CORECLR_DELEGATE_CALLTYPE *ClearEntityBridgeDelegate)();
 	ClearEntityBridgeDelegate clearEntityBridge = nullptr;
-    if (CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "ClearAll", (void **)(&clearEntityBridge)))
+    if (host->CreateDelegate(TestAppDLLName, EntityBridgeClassName, "ClearAll", (void **)(&clearEntityBridge)))
     {
         clearEntityBridge();
         std::println("EntityBridge cleared");
@@ -240,7 +238,7 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	// Clear internal call delegates to prevent dangling pointers
 	typedef void (CORECLR_DELEGATE_CALLTYPE *ClearInternalCallsDelegate)();
 	ClearInternalCallsDelegate clearInternalCalls = nullptr;
-    if (CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "ClearDelegates", (void **)(&clearInternalCalls)))
+    if (host->CreateDelegate(TestAppDLLName, InternalCallsClassName, "ClearDelegates", (void **)(&clearInternalCalls)))
     {
         clearInternalCalls();
         std::println("Internal call delegates cleared");
@@ -259,19 +257,6 @@ int main()
     if (!hCoreDll)
     {
     	std::println("Failed to load {}", dllName);
-        return 1;
-    }
-
-    // Get function pointers
-    auto InitializeCoreRuntime = reinterpret_cast<InitializeCoreRuntimeFunc>(GetProcAddress(hCoreDll, "InitializeCoreRuntime"));
-    auto ShutdownCoreRuntime = reinterpret_cast<ShutdownCoreRuntimeFunc>(GetProcAddress(hCoreDll, "ShutdownCoreRuntime"));
-    auto ExecuteManagedAssembly = reinterpret_cast<ExecuteManagedAssemblyFunc>(GetProcAddress(hCoreDll, "ExecuteManagedAssembly"));
-    auto CreateManagedDelegate = reinterpret_cast<CreateManagedDelegateFunc>(GetProcAddress(hCoreDll, "CreateManagedDelegate"));
-
-    if (!InitializeCoreRuntime || !ShutdownCoreRuntime)
-    {
-    	std::println("Failed to get function pointers from Criollo.dll");
-        FreeLibrary(hCoreDll);
         return 1;
     }
 
@@ -300,16 +285,46 @@ int main()
         return 1;
     }
 
-    // Initialize CoreCLR
-	std::println("Initializing CoreCLR");
-    if (!InitializeCoreRuntime(runtimePath.c_str(), assemblyPath.c_str()))
+    // Option 1: Using factory function with settings
+    typedef criollo::CoreCLRHostAPI* (*CreateCoreRuntimeHostWithSettingsFunc)(const char*, const char*, const char*);
+    typedef void (*DestroyCoreRuntimeHostFunc)(criollo::CoreCLRHostAPI*);
+
+    auto CreateCoreRuntimeHostWithSettings = reinterpret_cast<CreateCoreRuntimeHostWithSettingsFunc>(GetProcAddress(hCoreDll, "CreateCoreRuntimeHostWithSettings"));
+    auto DestroyCoreRuntimeHost = reinterpret_cast<DestroyCoreRuntimeHostFunc>(GetProcAddress(hCoreDll, "DestroyCoreRuntimeHost"));
+
+    if (!CreateCoreRuntimeHostWithSettings || !DestroyCoreRuntimeHost)
     {
-    	std::println("Failed to initialize CoreCLR runtime");
+    	std::println("Failed to get factory functions from Criollo.dll");
         FreeLibrary(hCoreDll);
         return 1;
     }
+
+    // Create the CoreCLR host with settings
+	std::println("Creating CoreCLR host with settings");
+    criollo::CoreCLRHostAPI* host = CreateCoreRuntimeHostWithSettings(
+        runtimePath.c_str(), 
+        assemblyPath.c_str(), 
+        "CriolloHost"
+    );
     
-    TestEntitySystem(CreateManagedDelegate);
+    if (!host)
+    {
+    	std::println("Failed to create CoreCLR host");
+        FreeLibrary(hCoreDll);
+        return 1;
+    }
+
+    // Initialize CoreCLR using the settings passed in constructor
+	std::println("Initializing CoreCLR");
+    if (!host->Initialize())
+    {
+    	std::println("Failed to initialize CoreCLR runtime");
+        DestroyCoreRuntimeHost(host);
+        FreeLibrary(hCoreDll);
+        return 1;
+    }
+
+    TestEntitySystem(host);
 
     // Shutdown
 	std::println("Shutting down...");
@@ -318,8 +333,10 @@ int main()
 	std::println("Waiting for GC...");
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-    // Shutdown CoreCLR & Unload DLL
-    ShutdownCoreRuntime();
+    // Shutdown CoreCLR & Destroy host
+    host->Shutdown();
+    DestroyCoreRuntimeHost(host);
+    
 	std::println("Unloading {}...", dllName);
     FreeLibrary(hCoreDll);
     return 0;

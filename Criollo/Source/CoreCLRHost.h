@@ -3,6 +3,8 @@
 #ifndef CORECLR_HOST_H
 #define CORECLR_HOST_H
 
+#include "Base.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -18,10 +20,26 @@ typedef int (*coreclr_execute_assembly_ptr)(void* hostHandle, unsigned int domai
 
 namespace criollo
 {
+    struct HostSettings
+    {
+        std::string RuntimePath;
+        std::string AssemblyPath;
+        std::string AppDomainName = "CriolloHost";
+
+        HostSettings() = default;
+        HostSettings(const std::string& runtimePath, const std::string& assemblyPath)
+            : RuntimePath(runtimePath), AssemblyPath(assemblyPath) {}
+    };
+
     class CoreCLRHost
     {
     public:
         CoreCLRHost();
+        ~CoreCLRHost();
+
+        // Prevent copying
+        CoreCLRHost(const CoreCLRHost&) = delete;
+        CoreCLRHost& operator=(const CoreCLRHost&) = delete;
 
         bool Initialize(const std::string& runtimePath, const std::string& assemblyPath);
         bool Shutdown();
@@ -70,6 +88,38 @@ namespace criollo
         std::string m_RuntimePath;
         std::string m_AssemblyPath;
     };
+
+    // C++ API wrapper for DLL boundary safety
+    class CRIOLLO_API CoreCLRHostAPI
+    {
+    public:
+        CoreCLRHostAPI();
+        explicit CoreCLRHostAPI(const HostSettings& settings);
+        ~CoreCLRHostAPI();
+
+        // Prevent copying
+        CoreCLRHostAPI(const CoreCLRHostAPI&) = delete;
+        CoreCLRHostAPI& operator=(const CoreCLRHostAPI&) = delete;
+
+        bool Initialize(const char* runtimePath, const char* assemblyPath);
+        bool Initialize();
+        void Shutdown();
+        bool ExecuteAssembly(const char* assemblyPath);
+        bool CreateDelegate(const char* assemblyName, const char* typeName, const char* methodName, void** outDelegate);
+        bool IsInitialized() const;
+
+        const HostSettings& GetSettings() const;
+
+    private:
+        struct Implementation;
+        Implementation* m_Impl;
+        HostSettings m_Settings;
+    };
+
+    // Factory functions for creating/destroying the host from DLL
+    extern "C" CRIOLLO_API CoreCLRHostAPI* CreateCoreRuntimeHost();
+    extern "C" CRIOLLO_API CoreCLRHostAPI* CreateCoreRuntimeHostWithSettings(const char* runtimePath, const char* assemblyPath, const char* appDomainName);
+    extern "C" CRIOLLO_API void DestroyCoreRuntimeHost(CoreCLRHostAPI* host);
 }
 
 #endif
