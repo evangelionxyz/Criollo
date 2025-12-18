@@ -35,40 +35,39 @@ typedef void (CORECLR_DELEGATE_CALLTYPE *LogDelegate)(const char* message);
 
 void TestBasicFunctionality(CreateManagedDelegateFunc CreateManagedDelegate)
 {
-	const char* TestAppDLLName = "TestScript";
-	const char* TestClassName = "TestScript.Core.Test";
+    const char *TestAppDLLName = "TestScript";
+    const char *TestClassName = "TestScript.Core.Test";
 
-	// Example 1: Call TestMethod
-	TestMethodDelegate testMethod = nullptr;
-	if (CreateManagedDelegate(TestAppDLLName, TestClassName, "TestMethod", (void**)(&testMethod)) && testMethod)
-	{
-		std::wcout << L"[Example 1] Calling TestMethod():" << std::endl;
-		int result = testMethod();
-		std::wcout << L"Result: " << result << std::endl << std::endl;
-	}
+    // Example 1: Call TestMethod
+    TestMethodDelegate testMethod = nullptr;
+    if (CreateManagedDelegate(TestAppDLLName, TestClassName, "TestMethod", (void **)(&testMethod)) && testMethod)
+    {
+        std::println("[Example 1] Calling TestMethod()");
+        int result = testMethod();
+        std::println("Result: {}", result);
+    }
 
-	// Example 2: Call Add method with parameters
-	AddDelegate addFunc = nullptr;
-	if (CreateManagedDelegate(TestAppDLLName, TestClassName, "Add", (void**)(&addFunc)) && addFunc)
-	{
-		std::wcout << L"[Example 2] Calling Add(10, 32):" << std::endl;
-		int sum = addFunc(10, 32);
-		std::wcout << L"Result: " << sum << std::endl << std::endl;
-	}
+    // Example 2: Call Add method with parameters
+    AddDelegate addFunc = nullptr;
+    if (CreateManagedDelegate(TestAppDLLName, TestClassName, "Add", (void **)(&addFunc)) && addFunc)
+    {
+        std::println("[Example 2] Calling Add(10, 32):");
+        int sum = addFunc(10, 32);
+        std::println("Result: {}", sum);
+    }
 
-	// Example 3: Call LogMessage (void return)
-	LogMessageDelegate logFunc = nullptr;
-	if (CreateManagedDelegate(TestAppDLLName, TestClassName, "LogMessage", (void**)(&logFunc)) && logFunc)
-	{
-		std::wcout << L"[Example 3] Calling LogMessage():" << std::endl;
-		logFunc("This is a message from C++ to C#");
-		std::wcout << std::endl;
-	}
+    // Example 3: Call LogMessage (void return)
+    LogMessageDelegate logFunc = nullptr;
+    if (CreateManagedDelegate(TestAppDLLName, TestClassName, "LogMessage", (void **)(&logFunc)) && logFunc)
+    {
+        std::println("[Example 3] Calling LogMessage()");
+        logFunc("This is a message from C++ to C#");
+    }
 }
 
 void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 {
-	std::wcout << L"\n========== Entity Component System Test ==========" << std::endl;
+    std::println("\n----- Entity Component System Test -----");
 
 	// Create entity manager
 	criollo::EntityManager entityManager;
@@ -83,7 +82,7 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	const char* InternalCallsClassName = "TestScript.Core.InternalCalls";
 
 	// Initialize internal call delegates (C++ -> C# property setters)
-	std::wcout << L"Initializing internal call system..." << std::endl;
+    std::println("Initializing internal call system..");
 	
 	//  Create C++ function wrappers that will be called from C#
 	typedef void (CORECLR_DELEGATE_CALLTYPE *SetGetTransformDelegateFunc)(Entity_GetTransformDelegate);
@@ -93,33 +92,35 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	SetSetTransformDelegateFunc setSetTransformDelegate = nullptr;
 	
 	// Create delegates to set the C# delegate properties
-	if (!CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "set_Entity_GetTransform", (void**)(&setGetTransformDelegate)))
-	{
-		std::wcerr << L"Failed to create set_Entity_GetTransform delegate" << std::endl;
-	}
-	else
-	{
-		// Create our C++ implementation delegate
-		Entity_GetTransformDelegate getTransformImpl = [](uint64_t entityID, criollo::TransformComponent* outTransform) {
-			criollo::ScriptBindings::Entity_GetTransform(entityID, outTransform);
-		};
-		setGetTransformDelegate(getTransformImpl);
-		std::wcout << L"Entity_GetTransform initialized!" << std::endl;
-	}
+    if (!CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "set_Entity_GetTransform", (void **)(&setGetTransformDelegate)))
+    {
+        std::wcerr << L"Failed to create set_Entity_GetTransform delegate" << std::endl;
+    }
+    else
+    {
+        // Create our C++ implementation delegate
+        Entity_GetTransformDelegate getTransformImpl = [](uint64_t entityID, criollo::TransformComponent *outTransform)
+        {
+            criollo::ScriptBindings::Entity_GetTransform(entityID, outTransform);
+        };
+        setGetTransformDelegate(getTransformImpl);
+        std::println("Entity_GetTransform initialized!");
+    }
 	
-	if (!CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "set_Entity_SetTransform", (void**)(&setSetTransformDelegate)))
-	{
-		std::wcerr << L"Failed to create set_Entity_SetTransform delegate" << std::endl;
-	}
-	else
-	{
-		// Create our C++ implementation delegate
-		Entity_SetTransformDelegate setTransformImpl = [](uint64_t entityID, criollo::TransformComponent* transform) {
-			criollo::ScriptBindings::Entity_SetTransform(entityID, transform);
-		};
-		setSetTransformDelegate(setTransformImpl);
-		std::wcout << L"Entity_SetTransform initialized!" << std::endl;
-	}
+    if (!CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "set_Entity_SetTransform", (void **)(&setSetTransformDelegate)))
+    {
+        std::wcerr << L"Failed to create set_Entity_SetTransform delegate" << std::endl;
+    }
+    else
+    {
+        // Create our C++ implementation delegate
+        Entity_SetTransformDelegate setTransformImpl = [](uint64_t entityID, criollo::TransformComponent *transform)
+        {
+            criollo::ScriptBindings::Entity_SetTransform(entityID, transform);
+        };
+        setSetTransformDelegate(setTransformImpl);
+        std::println("Entity_SetTransform initialized!");
+    }
 
 	// Create delegates for lifecycle methods (using static bridge methods)
 	EntityStartDelegate startDelegate = nullptr;
@@ -147,21 +148,21 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 		return;
 	}
 
-	std::wcout << L"Successfully created all entity lifecycle delegates!" << std::endl;
+    std::println("Successfully created all entity lifecycle delegates!");
 
 	// Create entity instance in C# (using EntityBridge)
 	typedef void (CORECLR_DELEGATE_CALLTYPE *CreateEntityInstanceDelegate)(uint64_t entityID, const char* typeName);
 	CreateEntityInstanceDelegate createInstanceDelegate = nullptr;
 	
-	if (CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "CreateEntityInstance", (void**)(&createInstanceDelegate)))
-	{
-		std::wcout << L"Calling CreateEntityInstance with ID=" << player->id << L", Type=TestScript.Scene.PlayerController" << std::endl;
-		createInstanceDelegate(player->id, "TestScript.Scene.PlayerController");
-		std::wcout << L"CreateEntityInstance completed" << std::endl;
-	}
+    if (CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "CreateEntityInstance", (void **)(&createInstanceDelegate)))
+    {
+        std::println("Calling CreateEntityInstance with ID={}, Type={}", player->id, "TestScript.Scene.PlayerController");
+        createInstanceDelegate(player->id, "TestScript.Scene.PlayerController");
+        std::println("CreateEntityInstance completed");
+    }
 	else
 	{
-		std::wcerr << L"Failed to create CreateEntityInstance delegate" << std::endl;
+        std::println("Failed to create CreateEntityInstance delegate");
 		entityManager.Shutdown();
 		return;
 	}
@@ -175,15 +176,16 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	// Set the delegates for the script
 	entityManager.SetScriptDelegates(player->id, startDelegate, updateDelegate, stopDelegate);
 
-	std::wcout << L"About to call StartEntity..." << std::endl;
+    std::println("About to call StartEntity..");
 
 	// Start the entity
 	entityManager.StartEntity(player->id);
 
-	std::wcout << L"StartEntity completed!" << std::endl;
+    std::println("StartEntity completed!");
 
 	// Simulate game loop
-	std::wcout << L"\n--- Simulating game loop for 3 seconds ---" << std::endl;
+    std::println("\n--- Simulating game loop for 3 seconds --");
+
 	float deltaTime = 0.016f; // ~60 FPS
 	int frameCount = 0;
 	int maxFrames = 180; // 3 seconds at 60 FPS
@@ -198,8 +200,7 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 		if (frameCount % 60 == 0)
 		{
 			auto& pos = player->transform.position;
-			std::wcout << L"Frame " << frameCount << L": Position(" 
-					   << pos.x << L", " << pos.y << L", " << pos.z << L")" << std::endl;
+            std::println("Frame {} - x:{} y:{} z:{}", frameCount, pos.x, pos.y, pos.z);
 		}
 
 		frameCount++;
@@ -211,9 +212,9 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	auto endTime = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 	
-	std::wcout << L"\n--- Game loop finished ---" << std::endl;
-	std::wcout << L"Total frames: " << frameCount << std::endl;
-	std::wcout << L"Duration: " << duration << L"ms" << std::endl;
+    std::println("\n--- Game loop finished ---");
+	std::println("Total frames: {}",frameCount);
+    std::println("Duration: {}ms", duration);
 
 	// Stop the entity
 	entityManager.StopEntity(player->id);
@@ -227,30 +228,30 @@ void TestEntitySystem(CreateManagedDelegateFunc CreateManagedDelegate)
 	}
 
 	// IMPORTANT: Clear C# delegate references before shutdown
-	std::wcout << L"Clearing C# delegate references..." << std::endl;
+    std::println("Clearing C# delegate references...");
 	
 	// Clear EntityBridge dictionary
 	typedef void (CORECLR_DELEGATE_CALLTYPE *ClearEntityBridgeDelegate)();
 	ClearEntityBridgeDelegate clearEntityBridge = nullptr;
-	if (CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "ClearAll", (void**)(&clearEntityBridge)))
-	{
-		clearEntityBridge();
-		std::wcout << L"EntityBridge cleared" << std::endl;
-	}
+    if (CreateManagedDelegate(TestAppDLLName, EntityBridgeClassName, "ClearAll", (void **)(&clearEntityBridge)))
+    {
+        clearEntityBridge();
+        std::println("EntityBridge cleared");
+    }
 	
 	// Clear internal call delegates to prevent dangling pointers
 	typedef void (CORECLR_DELEGATE_CALLTYPE *ClearInternalCallsDelegate)();
 	ClearInternalCallsDelegate clearInternalCalls = nullptr;
-	if (CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "ClearDelegates", (void**)(&clearInternalCalls)))
-	{
-		clearInternalCalls();
-		std::wcout << L"Internal call delegates cleared" << std::endl;
-	}
+    if (CreateManagedDelegate(TestAppDLLName, InternalCallsClassName, "ClearDelegates", (void **)(&clearInternalCalls)))
+    {
+        clearInternalCalls();
+        std::println("Internal call delegates cleared");
+    }
 
 	// Cleanup C++ side
 	entityManager.Shutdown();
 	
-	std::wcout << L"Entity system shutdown complete" << std::endl;
+    std::println("Entity system shutdown complete");
 }
 
 int main()

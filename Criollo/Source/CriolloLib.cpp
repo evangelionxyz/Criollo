@@ -56,23 +56,6 @@ extern "C"
         return g_pCoreHost;
     }
 
-    // Helper function to create a delegate for TestMethod specifically
-    // This demonstrates how to create type-safe exported functions for specific delegates
-    CRIOLLO_API bool CreateTestMethodDelegate(void** outDelegate)
-    {
-        if (g_pCoreHost == nullptr || !g_pCoreHost->IsInitialized() || outDelegate == nullptr)
-        {
-            return false;
-        }
-
-        return g_pCoreHost->CreateDelegate(
-            "TestScript",           // Assembly name (without .dll extension)
-            "Criollo.Test",         // Fully qualified type name
-            "TestMethod",           // Method name
-            outDelegate
-        );
-    }
-
     // Generic helper function to create any delegate
     CRIOLLO_API bool CreateManagedDelegate(const char* assemblyName, const char* typeName, const char* methodName, void** outDelegate)
     {
