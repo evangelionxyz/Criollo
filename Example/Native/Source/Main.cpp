@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <print>
+#include <string>
 
 namespace ExampleInterop
 {
@@ -34,6 +35,53 @@ enum ScriptMethodSignature : int
     Vector3_Vector3Vector3 = 11,
     Void_Transform = 12,
     Transform = 13,
+};
+
+struct ScriptInstance
+{
+    MochiSharp::DotNetHost* Host;
+    std::string Guid;
+    int OnAwake = 0;
+    int OnStart = 0;
+    int OnUpdate = 0;
+    int SetTransform = 0;
+    int GetTransform = 0;
+
+    void Init(MochiSharp::DotNetHost* host, const char* guid, const char* typeName)
+    {
+        Host = host;
+        Guid = guid;
+        if (Host->CreateInstanceGuid(typeName, Guid.c_str()))
+        {
+            std::println("[C++] Created instance {} of type {}", Guid, typeName);
+            OnAwake = Host->BindInstanceMethodGuid(Guid.c_str(), "OnAwake", ScriptMethodSignature::Void);
+            OnStart = Host->BindInstanceMethodGuid(Guid.c_str(), "OnStart", ScriptMethodSignature::Void);
+            OnUpdate = Host->BindInstanceMethodGuid(Guid.c_str(), "OnUpdate", ScriptMethodSignature::Void_Float);
+            SetTransform = Host->BindInstanceMethodGuid(Guid.c_str(), "SetTransform", ScriptMethodSignature::Void_Transform);
+            GetTransform = Host->BindInstanceMethodGuid(Guid.c_str(), "GetTransform", ScriptMethodSignature::Transform);
+        }
+        else
+        {
+            std::println("[C++] Failed to create instance {}", Guid);
+        }
+    }
+
+    void Awake() { if (OnAwake) Host->Invoke(OnAwake, nullptr, 0, nullptr); }
+    void Start() { if (OnStart) Host->Invoke(OnStart, nullptr, 0, nullptr); }
+    void Update(float dt) { if (OnUpdate) { void* args[] = { &dt }; Host->Invoke(OnUpdate, args, 1, nullptr); } }
+    
+    void SetTx(const ExampleInterop::Transform& t) { 
+        if (SetTransform) { 
+            void* args[] = { const_cast<ExampleInterop::Transform*>(&t) }; 
+            Host->Invoke(SetTransform, args, 1, nullptr); 
+        } 
+    }
+    
+    ExampleInterop::Transform GetTx() {
+        ExampleInterop::Transform t{};
+        if (GetTransform) Host->Invoke(GetTransform, nullptr, 0, &t);
+        return t;
+    }
 };
 
 #ifdef _WIN32
@@ -89,108 +137,32 @@ int main(int argc, char *argv[])
         host.RegisterSignature(ScriptMethodSignature::Transform, transformType, nullptr, 0);
     }
 
-    // Create a script instance with a caller-supplied UUID (stable ID from your engine).
-    const char *instanceGuid = "c3f5a1b7-1c21-4f5f-9e3a-7a9a2bf6b7d1";
-    if (!host.CreateInstanceGuid("Example.Managed.Scripts.Player", instanceGuid))
-    {
-        return 1;
-    }
+    // Create multiple script instances
+    ScriptInstance player1;
+    player1.Init(&host, "c3f5a1b7-1c21-4f5f-9e3a-7a9a2bf6b7d1", "Example.Managed.Scripts.Player");
 
-    int onAwake = host.BindInstanceMethodGuid(instanceGuid, "OnAwake", ScriptMethodSignature::Void);
-    int onStart = host.BindInstanceMethodGuid(instanceGuid, "OnStart", ScriptMethodSignature::Void);
-    int onUpdate = host.BindInstanceMethodGuid(instanceGuid, "OnUpdate", ScriptMethodSignature::Void_Float);
-    int addInt = host.BindInstanceMethodGuid(instanceGuid, "AddInt", ScriptMethodSignature::Int_IntInt);
-    int mulInt = host.BindInstanceMethodGuid(instanceGuid, "MulInt", ScriptMethodSignature::Int_IntInt);
-    int addVec = host.BindInstanceMethodGuid(instanceGuid, "AddVector", ScriptMethodSignature::Vector3_Vector3Vector3);
-    int mulVec = host.BindInstanceMethodGuid(instanceGuid, "MulVector", ScriptMethodSignature::Vector3_Vector3Vector3);
-    int setTransform = host.BindInstanceMethodGuid(instanceGuid, "SetTransform", ScriptMethodSignature::Void_Transform);
-    int getTransform = host.BindInstanceMethodGuid(instanceGuid, "GetTransform", ScriptMethodSignature::Transform);
+    ScriptInstance player2;
+    player2.Init(&host, "d4f6b2c8-2d32-5e6f-af4b-8b0b3cf7c8e2", "Example.Managed.Scripts.Player");
 
-    if (onAwake)
-    {
-        host.Invoke(onAwake, nullptr, 0, nullptr);
-    }
+    player1.Awake();
+    player2.Awake();
 
-    if (onStart)
-    {
-        host.Invoke(onStart, nullptr, 0, nullptr);
-    }
+    player1.Start();
+    player2.Start();
 
-    // int addition / multiplication
-    if (addInt)
-    {
-        int result = 0;
-        int a = 2;
-        int b = 3;
-        void *args[] = { &a, &b };
-        if (host.Invoke(addInt, args, 2, &result))
-        {
-            std::println("[C++] AddInt(2,3) = {}", result);
-        }
-    }
+    // Set different transforms to prove independence
+    ExampleInterop::Transform t1 = { {1,1,1}, {0,0,0}, {1,1,1} };
+    player1.SetTx(t1);
 
-    if (mulInt)
-    {
-        int result = 0;
-        int a = 6;
-        int b = 7;
-        void *args[] = { &a, &b };
-        if (host.Invoke(mulInt, args, 2, &result))
-        {
-            std::println("[C++] MulInt(6,7) = {}", result);
-        }
-    }
+    ExampleInterop::Transform t2 = { {2,2,2}, {0,45,0}, {2,2,2} };
+    player2.SetTx(t2);
 
-    // Vector3 addition / multiplication
-    ExampleInterop::Vector3 a{ 1.0f, 2.0f, 3.0f };
-    ExampleInterop::Vector3 b{ 4.0f, 5.0f, 6.0f };
-
-    if (addVec)
-    {
-        ExampleInterop::Vector3 sum{};
-        void *args[] = { &a, &b };
-        if (host.Invoke(addVec, args, 2, &sum))
-        {
-            std::println("[C++] AddVector({},{},{}) + ({},{},{}) = ({},{},{})",
-                a.X, a.Y, a.Z, b.X, b.Y, b.Z,
-                sum.X, sum.Y, sum.Z);
-        }
-    }
-
-    if (mulVec)
-    {
-        ExampleInterop::Vector3 prod{};
-        void *args[] = { &a, &b };
-        if (host.Invoke(mulVec, args, 2, &prod))
-        {
-            std::println("[C++] MulVector({},{},{}) * ({},{},{}) = ({},{},{})",
-                a.X, a.Y, a.Z, b.X, b.Y, b.Z,
-                prod.X, prod.Y, prod.Z);
-        }
-    }
-
-    // Transform roundtrip
-    if (setTransform)
-    {
-        ExampleInterop::Transform t{};
-        t.Position = { 10.0f, 0.0f, 5.0f };
-        t.Rotation = { 0.0f, 90.0f, 0.0f };
-        t.Scale = { 1.0f, 1.0f, 1.0f };
-        void *args[] = { &t };
-        host.Invoke(setTransform, args, 1, nullptr);
-    }
-
-    if (getTransform)
-    {
-        ExampleInterop::Transform t{};
-        if (host.Invoke(getTransform, nullptr, 0, &t))
-        {
-            std::println("[C++] GetTransform -> Pos=({},{},{}) Rot=({},{},{}) Scale=({},{},{})",
-                t.Position.X, t.Position.Y, t.Position.Z,
-                t.Rotation.X, t.Rotation.Y, t.Rotation.Z,
-                t.Scale.X, t.Scale.Y, t.Scale.Z);
-        }
-    }
+    // Verify state
+    auto t1_out = player1.GetTx();
+    auto t2_out = player2.GetTx();
+    
+    std::println("[C++] Player 1 Pos: {},{},{}", t1_out.Position.X, t1_out.Position.Y, t1_out.Position.Z);
+    std::println("[C++] Player 2 Pos: {},{},{}", t2_out.Position.X, t2_out.Position.Y, t2_out.Position.Z);
 
     bool running = true;
     auto start = std::chrono::steady_clock::now();
@@ -202,11 +174,8 @@ int main(int argc, char *argv[])
         float deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f;
         start = end;
 
-        if (onUpdate)
-        {
-            void *args[] = { &deltaTime };
-            host.Invoke(onUpdate, args, 1, nullptr);
-        }
+        player1.Update(deltaTime);
+        player2.Update(deltaTime);
         
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
         runningCount++;

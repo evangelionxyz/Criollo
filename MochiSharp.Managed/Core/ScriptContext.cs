@@ -128,12 +128,9 @@ namespace MochiSharp.Managed.Core
 
 		public void RegisterSignature(int signatureId, string returnTypeName, string[] parameterTypeNames)
 		{
-			if (signatureId < 0)
-			{
-				throw new ArgumentOutOfRangeException(nameof(signatureId));
-			}
+            ArgumentOutOfRangeException.ThrowIfNegative(signatureId);
 
-			Type returnType = ResolveType(returnTypeName);
+            Type returnType = ResolveType(returnTypeName);
 			var paramTypes = parameterTypeNames.Length == 0
 				? Array.Empty<Type>()
 				: parameterTypeNames.Select(ResolveType).ToArray();
