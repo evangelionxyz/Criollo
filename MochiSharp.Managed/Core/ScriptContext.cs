@@ -67,6 +67,7 @@ namespace MochiSharp.Managed.Core
 
 		private int _nextInstanceId = 1;
 		private readonly Dictionary<int, object> _instances = new();
+		private readonly Dictionary<Guid, object> _instancesByGuid = new();
 
 		private int _nextMethodId = 1;
 		private readonly Dictionary<int, MethodBinding> _methods = new();
@@ -119,6 +120,7 @@ namespace MochiSharp.Managed.Core
 		public void Unload()
 		{
 			_instances.Clear();
+			_instancesByGuid.Clear();
 			_methods.Clear();
 			_signatures.Clear();
 			_loadContext.Unload();
@@ -150,9 +152,34 @@ namespace MochiSharp.Managed.Core
 			return id;
 		}
 
+		public void CreateInstance(Guid instanceId, string typeName)
+		{
+			if (_instancesByGuid.ContainsKey(instanceId))
+			{
+				throw new InvalidOperationException($"Instance GUID already exists: {instanceId}");
+			}
+
+			Type type = ResolvePluginType(typeName);
+			object instance = Activator.CreateInstance(type)
+				?? throw new InvalidOperationException($"Failed to create instance of {type.FullName}");
+
+			_instancesByGuid.Add(instanceId, instance);
+		}
+
 		public void DestroyInstance(int instanceId)
 		{
 			if (_instances.Remove(instanceId, out var obj))
+			{
+				if (obj is IDisposable d)
+				{
+					d.Dispose();
+				}
+			}
+		}
+
+		public void DestroyInstance(Guid instanceId)
+		{
+			if (_instancesByGuid.Remove(instanceId, out var obj))
 			{
 				if (obj is IDisposable d)
 				{
@@ -166,6 +193,23 @@ namespace MochiSharp.Managed.Core
 			if (!_instances.TryGetValue(instanceId, out var instance))
 			{
 				throw new KeyNotFoundException($"Instance id not found: {instanceId}");
+			}
+
+			Signature sig = GetSignature(signatureId);
+			var type = instance.GetType();
+			var method = FindMethod(type, methodName, sig.ParameterTypes, isStatic: false);
+			EnsureReturnType(method, sig.ReturnType);
+
+			int id = _nextMethodId++;
+			_methods.Add(id, new MethodBinding(instance, method, sig));
+			return id;
+		}
+
+		public int BindInstanceMethod(Guid instanceId, string methodName, int signatureId)
+		{
+			if (!_instancesByGuid.TryGetValue(instanceId, out var instance))
+			{
+				throw new KeyNotFoundException($"Instance guid not found: {instanceId}");
 			}
 
 			Signature sig = GetSignature(signatureId);

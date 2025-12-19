@@ -89,22 +89,22 @@ int main(int argc, char *argv[])
         host.RegisterSignature(ScriptMethodSignature::Transform, transformType, nullptr, 0);
     }
 
-    // Create a script instance and bind whatever lifecycle methods you want.
-    int instance = host.CreateInstance("Example.Managed.Scripts.Player");
-    if (instance == 0)
+    // Create a script instance with a caller-supplied UUID (stable ID from your engine).
+    const char *instanceGuid = "c3f5a1b7-1c21-4f5f-9e3a-7a9a2bf6b7d1";
+    if (!host.CreateInstanceGuid("Example.Managed.Scripts.Player", instanceGuid))
     {
         return 1;
     }
 
-    int onAwake = host.BindInstanceMethod(instance, "OnAwake", ScriptMethodSignature::Void);
-    int onStart = host.BindInstanceMethod(instance, "OnStart", ScriptMethodSignature::Void);
-    int onUpdate = host.BindInstanceMethod(instance, "OnUpdate", ScriptMethodSignature::Void_Float);
-    int addInt = host.BindInstanceMethod(instance, "AddInt", ScriptMethodSignature::Int_IntInt);
-    int mulInt = host.BindInstanceMethod(instance, "MulInt", ScriptMethodSignature::Int_IntInt);
-    int addVec = host.BindInstanceMethod(instance, "AddVector", ScriptMethodSignature::Vector3_Vector3Vector3);
-    int mulVec = host.BindInstanceMethod(instance, "MulVector", ScriptMethodSignature::Vector3_Vector3Vector3);
-    int setTransform = host.BindInstanceMethod(instance, "SetTransform", ScriptMethodSignature::Void_Transform);
-    int getTransform = host.BindInstanceMethod(instance, "GetTransform", ScriptMethodSignature::Transform);
+    int onAwake = host.BindInstanceMethodGuid(instanceGuid, "OnAwake", ScriptMethodSignature::Void);
+    int onStart = host.BindInstanceMethodGuid(instanceGuid, "OnStart", ScriptMethodSignature::Void);
+    int onUpdate = host.BindInstanceMethodGuid(instanceGuid, "OnUpdate", ScriptMethodSignature::Void_Float);
+    int addInt = host.BindInstanceMethodGuid(instanceGuid, "AddInt", ScriptMethodSignature::Int_IntInt);
+    int mulInt = host.BindInstanceMethodGuid(instanceGuid, "MulInt", ScriptMethodSignature::Int_IntInt);
+    int addVec = host.BindInstanceMethodGuid(instanceGuid, "AddVector", ScriptMethodSignature::Vector3_Vector3Vector3);
+    int mulVec = host.BindInstanceMethodGuid(instanceGuid, "MulVector", ScriptMethodSignature::Vector3_Vector3Vector3);
+    int setTransform = host.BindInstanceMethodGuid(instanceGuid, "SetTransform", ScriptMethodSignature::Void_Transform);
+    int getTransform = host.BindInstanceMethodGuid(instanceGuid, "GetTransform", ScriptMethodSignature::Transform);
 
     if (onAwake)
     {

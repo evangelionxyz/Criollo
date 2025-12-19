@@ -161,6 +161,21 @@ namespace MochiSharp
             return false;
         }
 
+        // Get CreateInstanceGuid
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("CreateInstanceGuid"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedCreateInstanceGuid);
+
+        if (rc != 0 || ManagedCreateInstanceGuid == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load CreateInstanceGuid function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
         // Get DestroyInstance
         rc = load_assembly_and_get_function_pointer(
             managedCorePath.c_str(),
@@ -176,6 +191,21 @@ namespace MochiSharp
             return false;
         }
 
+        // Get DestroyInstanceGuid
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("DestroyInstanceGuid"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedDestroyInstanceGuid);
+
+        if (rc != 0 || ManagedDestroyInstanceGuid == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load DestroyInstanceGuid function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
         // Get BindInstanceMethod
         rc = load_assembly_and_get_function_pointer(
             managedCorePath.c_str(),
@@ -188,6 +218,21 @@ namespace MochiSharp
         if (rc != 0 || ManagedBindInstanceMethod == nullptr)
         {
             std::cout << "[C++ Engine] Failed to load BindInstanceMethod function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get BindInstanceMethodGuid
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("BindInstanceMethodGuid"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedBindInstanceMethodGuid);
+
+        if (rc != 0 || ManagedBindInstanceMethodGuid == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load BindInstanceMethodGuid function (rc: 0x" << std::hex << rc << std::dec << ")\n";
             return false;
         }
 
@@ -266,11 +311,29 @@ namespace MochiSharp
         return ManagedCreateInstance(typeName);
     }
 
+    bool DotNetHost::CreateInstanceGuid(const char *typeName, const char *instanceGuid)
+    {
+        if (!ManagedCreateInstanceGuid)
+        {
+            return false;
+        }
+
+        return ManagedCreateInstanceGuid(typeName, instanceGuid) != 0;
+    }
+
     void DotNetHost::DestroyInstance(int instanceId)
     {
         if (ManagedDestroyInstance)
         {
             ManagedDestroyInstance(instanceId);
+        }
+    }
+
+    void DotNetHost::DestroyInstanceGuid(const char *instanceGuid)
+    {
+        if (ManagedDestroyInstanceGuid)
+        {
+            ManagedDestroyInstanceGuid(instanceGuid);
         }
     }
 
@@ -282,6 +345,16 @@ namespace MochiSharp
         }
 
         return ManagedBindInstanceMethod(instanceId, methodName, signature);
+    }
+
+    int DotNetHost::BindInstanceMethodGuid(const char *instanceGuid, const char *methodName, int signature)
+    {
+        if (!ManagedBindInstanceMethodGuid)
+        {
+            return 0;
+        }
+
+        return ManagedBindInstanceMethodGuid(instanceGuid, methodName, signature);
     }
 
     int DotNetHost::BindStaticMethod(const char *typeName, const char *methodName, int signature)

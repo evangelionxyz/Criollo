@@ -90,6 +90,28 @@ namespace MochiSharp.Managed.Core
             }
         }
 
+        // Create a script instance with a caller-supplied GUID key.
+        // Returns 1 on success, 0 on error.
+        [UnmanagedCallersOnly]
+        public static int CreateInstanceGuid(IntPtr typeNamePtr, IntPtr instanceGuidPtr)
+        {
+            try
+            {
+                string typeName = Marshal.PtrToStringUTF8(typeNamePtr)!;
+                string guidText = Marshal.PtrToStringUTF8(instanceGuidPtr)!;
+                Guid instanceGuid = Guid.Parse(guidText);
+
+                GetContextOrThrow().CreateInstance(instanceGuid, typeName);
+                _hostHook?.Log($"Created instance {instanceGuid}: {typeName}");
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                _hostHook?.Log($"CreateInstanceGuid failed: {ex}");
+                return 0;
+            }
+        }
+
         [UnmanagedCallersOnly]
         public static void DestroyInstance(int instanceId)
         {
@@ -100,6 +122,21 @@ namespace MochiSharp.Managed.Core
             catch (Exception ex)
             {
                 _hostHook?.Log($"DestroyInstance failed: {ex}");
+            }
+        }
+
+        [UnmanagedCallersOnly]
+        public static void DestroyInstanceGuid(IntPtr instanceGuidPtr)
+        {
+            try
+            {
+                string guidText = Marshal.PtrToStringUTF8(instanceGuidPtr)!;
+                Guid instanceGuid = Guid.Parse(guidText);
+                GetContextOrThrow().DestroyInstance(instanceGuid);
+            }
+            catch (Exception ex)
+            {
+                _hostHook?.Log($"DestroyInstanceGuid failed: {ex}");
             }
         }
 
@@ -117,6 +154,27 @@ namespace MochiSharp.Managed.Core
             catch (Exception ex)
             {
                 _hostHook?.Log($"BindInstanceMethod failed: {ex}");
+                return 0;
+            }
+        }
+
+        // Bind an instance method using a caller-supplied GUID instance key.
+        [UnmanagedCallersOnly]
+        public static int BindInstanceMethodGuid(IntPtr instanceGuidPtr, IntPtr methodNamePtr, int signature)
+        {
+            try
+            {
+                string guidText = Marshal.PtrToStringUTF8(instanceGuidPtr)!;
+                Guid instanceGuid = Guid.Parse(guidText);
+                string methodName = Marshal.PtrToStringUTF8(methodNamePtr)!;
+
+                int id = GetContextOrThrow().BindInstanceMethod(instanceGuid, methodName, signature);
+                _hostHook?.Log($"Bound instance method {id}: instance {instanceGuid}.{methodName} (sig={signature})");
+                return id;
+            }
+            catch (Exception ex)
+            {
+                _hostHook?.Log($"BindInstanceMethodGuid failed: {ex}");
                 return 0;
             }
         }
