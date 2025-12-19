@@ -13,10 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         configuration: [Release]
-        platform: [Any CPU]
-
     env:
-      SOLUTION_FILE: MochiSharp.sln
+      SLN_FILE_NATIVE: MochiSharp.sln
+      SLN_FILE_MANAGED: MochiSharp-Managed.sln
       PREMAKE_VERSION: 5.0.0-beta7
 
     steps:
@@ -48,15 +47,18 @@ jobs:
           Expand-Archive -Path $zipPath -DestinationPath $dst -Force
           "$dst" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: Generate solution with Premake
+      - name: Generate Solution with Premake5
         shell: pwsh
-        run: premake5 vs2022
+        run: |
+          premake5 vs2022 --file=premake5-native.lua ^
+          premake5 vs2022 --file=premake5-managed.lua
 
       - name: Restore NuGet packages
         shell: pwsh
-        run: msbuild $env:SOLUTION_FILE /t:Restore /p:Configuration=${{ matrix.configuration }} /p:Platform="${{ matrix.platform }}"
+        run: msbuild $env:SLN_FILE_MANAGED /t:Restore /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" ^
 
       - name: Build native solution
         shell: pwsh
-        run: msbuild $env:SOLUTION_FILE /t:Build /p:Configuration=${{ matrix.configuration }} /p:Platform="${{ matrix.platform }}" /m
-
+        run: |
+          msbuild $env:SLN_FILE_MANAGED /t:Build /p:Configuration=${{ matrix.configuration }} /p:Platform="Any CPU" /m ^
+          msbuild $env:SLN_FILE_NATIVE /t:Build /p:Configuration=${{ matrix.configuration }} /p:Platform="x64" /m
