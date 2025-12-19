@@ -1,11 +1,9 @@
 project "MochiSharp.Native"
     location "%{wks.location}/MochiSharp.Native"
-    kind "SharedLib"
+    kind "StaticLib"
     language "C++"
     cppdialect "c++23"
-    
-    filter "platforms:Any CPU"
-        architecture "x64"
+    architecture "x64"
 
     targetdir (OUTPUT_DIR)
     objdir (INTOUTPUT_DIR)
@@ -15,14 +13,25 @@ project "MochiSharp.Native"
         "Source/**.h"
     }
 
+    includedirs {
+        "%{IncludeDirs.Hostfxr}"
+    }
+
+    libdirs {
+        "%{IncludeDirs.Hostfxr}"
+    }
+
+    links {
+        "%{THIRDPARTY_DIR}/dotnet/host/fxr/9.0.11/x64/nethost.lib"
+    }
+
     filter "system:windows"
         systemversion "latest"
         buildoptions { "/utf-8" }
         defines {
             "_WINDOWS",
-            "WIN32",
+            "_WIN32",
             "WIN32_LEAN_AND_MEAN",
-            "MOCHISHARP_EXPORTS",
             "_CRT_SECURE_NO_WARNINGS"
         }
 
@@ -36,15 +45,6 @@ project "MochiSharp.Native"
         }
 
     filter "configurations:Release"
-        runtime "Release"
-        optimize "on"
-        symbols "on"
-        defines {
-            "_NDEBUG",
-            "NDEBUG"
-        }
-
-    filter "configurations:Shipping"
         runtime "Release"
         optimize "on"
         symbols "off"

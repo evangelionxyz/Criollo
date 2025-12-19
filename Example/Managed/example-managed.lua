@@ -1,12 +1,11 @@
-project "Game"
-    location "%{wks.location}/Example/TestScript"
+project "Example.Managed"
+    location "%{wks.location}/Example/Managed"
     kind "SharedLib"
     language "C#"
     dotnetframework "net9.0"
-    platforms { "Any CPU" }
 
     targetdir (OUTPUT_DIR)
-    objdir (INTOOUTPUT_DIR)
+    objdir (INTOUTPUT_DIR)
 
     files {
         "**.cs"
@@ -24,17 +23,10 @@ project "Game"
             EnableDynamicLoading = "true",
             ImplicitUsing = "enable"
         }
-
-    filter { "action:vs*", "platforms:x64" }
-        vsprops { PlatformTarget = "x64" }
         
     filter "configurations:Debug"
         symbols "on"
 
     filter "configurations:Release"
-        optimize "on"
-        symbols "on"
-
-    filter "configurations:Shipping"
         optimize "on"
         symbols "off"
