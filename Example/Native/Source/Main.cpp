@@ -6,6 +6,23 @@
 #include <chrono>
 #include <print>
 
+namespace ExampleInterop
+{
+    struct Vector3
+    {
+        float X;
+        float Y;
+        float Z;
+    };
+
+    struct Transform
+    {
+        Vector3 Position;
+        Vector3 Rotation;
+        Vector3 Scale;
+    };
+}
+
 enum ScriptMethodSignature : int
 {
     Void = 0,
@@ -39,6 +56,39 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Register signatures (the core stays generic; the app defines what these IDs mean).
+    // Note: use assembly-qualified names for app-defined structs.
+    const char *vector3Type = "Example.Managed.Interop.Vector3, Example.Managed";
+    const char *transformType = "Example.Managed.Interop.Transform, Example.Managed";
+
+    {
+        host.RegisterSignature(ScriptMethodSignature::Void, "System.Void", nullptr, 0);
+    }
+
+    {
+        const char *p1[] = { "System.Single" };
+        host.RegisterSignature(ScriptMethodSignature::Void_Float, "System.Void", p1, 1);
+    }
+
+    {
+        const char *p2[] = { "System.Int32", "System.Int32" };
+        host.RegisterSignature(ScriptMethodSignature::Int_IntInt, "System.Int32", p2, 2);
+    }
+
+    {
+        const char *p2[] = { vector3Type, vector3Type };
+        host.RegisterSignature(ScriptMethodSignature::Vector3_Vector3Vector3, vector3Type, p2, 2);
+    }
+
+    {
+        const char *p1[] = { transformType };
+        host.RegisterSignature(ScriptMethodSignature::Void_Transform, "System.Void", p1, 1);
+    }
+
+    {
+        host.RegisterSignature(ScriptMethodSignature::Transform, transformType, nullptr, 0);
+    }
+
     // Create a script instance and bind whatever lifecycle methods you want.
     int instance = host.CreateInstance("Example.Managed.Scripts.Player");
     if (instance == 0)
@@ -58,19 +108,22 @@ int main(int argc, char *argv[])
 
     if (onAwake)
     {
-        host.InvokeVoid(onAwake);
+        host.Invoke(onAwake, nullptr, 0, nullptr);
     }
 
     if (onStart)
     {
-        host.InvokeVoid(onStart);
+        host.Invoke(onStart, nullptr, 0, nullptr);
     }
 
     // int addition / multiplication
     if (addInt)
     {
         int result = 0;
-        if (host.InvokeInt2(addInt, 2, 3, result))
+        int a = 2;
+        int b = 3;
+        void *args[] = { &a, &b };
+        if (host.Invoke(addInt, args, 2, &result))
         {
             std::println("[C++] AddInt(2,3) = {}", result);
         }
@@ -79,20 +132,24 @@ int main(int argc, char *argv[])
     if (mulInt)
     {
         int result = 0;
-        if (host.InvokeInt2(mulInt, 6, 7, result))
+        int a = 6;
+        int b = 7;
+        void *args[] = { &a, &b };
+        if (host.Invoke(mulInt, args, 2, &result))
         {
             std::println("[C++] MulInt(6,7) = {}", result);
         }
     }
 
     // Vector3 addition / multiplication
-    MochiSharp::Vector3 a{ 1.0f, 2.0f, 3.0f };
-    MochiSharp::Vector3 b{ 4.0f, 5.0f, 6.0f };
+    ExampleInterop::Vector3 a{ 1.0f, 2.0f, 3.0f };
+    ExampleInterop::Vector3 b{ 4.0f, 5.0f, 6.0f };
 
     if (addVec)
     {
-        MochiSharp::Vector3 sum{};
-        if (host.InvokeVector3(addVec, a, b, sum))
+        ExampleInterop::Vector3 sum{};
+        void *args[] = { &a, &b };
+        if (host.Invoke(addVec, args, 2, &sum))
         {
             std::println("[C++] AddVector({},{},{}) + ({},{},{}) = ({},{},{})",
                 a.X, a.Y, a.Z, b.X, b.Y, b.Z,
@@ -102,8 +159,9 @@ int main(int argc, char *argv[])
 
     if (mulVec)
     {
-        MochiSharp::Vector3 prod{};
-        if (host.InvokeVector3(mulVec, a, b, prod))
+        ExampleInterop::Vector3 prod{};
+        void *args[] = { &a, &b };
+        if (host.Invoke(mulVec, args, 2, &prod))
         {
             std::println("[C++] MulVector({},{},{}) * ({},{},{}) = ({},{},{})",
                 a.X, a.Y, a.Z, b.X, b.Y, b.Z,
@@ -114,17 +172,18 @@ int main(int argc, char *argv[])
     // Transform roundtrip
     if (setTransform)
     {
-        MochiSharp::Transform t{};
+        ExampleInterop::Transform t{};
         t.Position = { 10.0f, 0.0f, 5.0f };
         t.Rotation = { 0.0f, 90.0f, 0.0f };
         t.Scale = { 1.0f, 1.0f, 1.0f };
-        host.InvokeTransformIn(setTransform, t);
+        void *args[] = { &t };
+        host.Invoke(setTransform, args, 1, nullptr);
     }
 
     if (getTransform)
     {
-        MochiSharp::Transform t{};
-        if (host.InvokeTransformOut(getTransform, t))
+        ExampleInterop::Transform t{};
+        if (host.Invoke(getTransform, nullptr, 0, &t))
         {
             std::println("[C++] GetTransform -> Pos=({},{},{}) Rot=({},{},{}) Scale=({},{},{})",
                 t.Position.X, t.Position.Y, t.Position.Z,
@@ -134,18 +193,23 @@ int main(int argc, char *argv[])
     }
 
     bool running = true;
-
     auto start = std::chrono::steady_clock::now();
 
-    while (running)
+    int runningCount = 0;
+    while (running && runningCount <= 10)
     {
         auto end = std::chrono::steady_clock::now();
         float deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f;
         start = end;
 
-        if (onUpdate) host.InvokeFloat(onUpdate, deltaTime);
+        if (onUpdate)
+        {
+            void *args[] = { &deltaTime };
+            host.Invoke(onUpdate, args, 1, nullptr);
+        }
         
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        runningCount++;
     }
 
     return 0;

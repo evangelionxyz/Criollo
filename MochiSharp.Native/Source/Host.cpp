@@ -131,6 +131,21 @@ namespace MochiSharp
             return false;
         }
 
+        // Get RegisterSignature
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("RegisterSignature"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedRegisterSignature);
+
+        if (rc != 0 || ManagedRegisterSignature == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load RegisterSignature function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
         // Get CreateInstance
         rc = load_assembly_and_get_function_pointer(
             managedCorePath.c_str(),
@@ -191,93 +206,18 @@ namespace MochiSharp
             return false;
         }
 
-        // Get InvokeVoid
+        // Get Invoke
         rc = load_assembly_and_get_function_pointer(
             managedCorePath.c_str(),
             STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
-            STR("InvokeVoid"),
+            STR("Invoke"),
             UNMANAGEDCALLERSONLY_METHOD,
             nullptr,
-            (void **)&ManagedInvokeVoid);
+            (void **)&ManagedInvoke);
 
-        if (rc != 0 || ManagedInvokeVoid == nullptr)
+        if (rc != 0 || ManagedInvoke == nullptr)
         {
-            std::cout << "[C++ Engine] Failed to load InvokeVoid function (rc: 0x" << std::hex << rc << std::dec << ")\n";
-            return false;
-        }
-
-        // Get InvokeFloat
-        rc = load_assembly_and_get_function_pointer(
-            managedCorePath.c_str(),
-            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
-            STR("InvokeFloat"),
-            UNMANAGEDCALLERSONLY_METHOD,
-            nullptr,
-            (void **)&ManagedInvokeFloat);
-
-        if (rc != 0 || ManagedInvokeFloat == nullptr)
-        {
-            std::cout << "[C++ Engine] Failed to load InvokeFloat function (rc: 0x" << std::hex << rc << std::dec << ")\n";
-            return false;
-        }
-
-        // Get InvokeInt2
-        rc = load_assembly_and_get_function_pointer(
-            managedCorePath.c_str(),
-            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
-            STR("InvokeInt2"),
-            UNMANAGEDCALLERSONLY_METHOD,
-            nullptr,
-            (void **)&ManagedInvokeInt2);
-
-        if (rc != 0 || ManagedInvokeInt2 == nullptr)
-        {
-            std::cout << "[C++ Engine] Failed to load InvokeInt2 function (rc: 0x" << std::hex << rc << std::dec << ")\n";
-            return false;
-        }
-
-        // Get InvokeVector3
-        rc = load_assembly_and_get_function_pointer(
-            managedCorePath.c_str(),
-            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
-            STR("InvokeVector3"),
-            UNMANAGEDCALLERSONLY_METHOD,
-            nullptr,
-            (void **)&ManagedInvokeVector3);
-
-        if (rc != 0 || ManagedInvokeVector3 == nullptr)
-        {
-            std::cout << "[C++ Engine] Failed to load InvokeVector3 function (rc: 0x" << std::hex << rc << std::dec << ")\n";
-            return false;
-        }
-
-        // Get InvokeTransformIn
-        rc = load_assembly_and_get_function_pointer(
-            managedCorePath.c_str(),
-            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
-            STR("InvokeTransformIn"),
-            UNMANAGEDCALLERSONLY_METHOD,
-            nullptr,
-            (void **)&ManagedInvokeTransformIn);
-
-        if (rc != 0 || ManagedInvokeTransformIn == nullptr)
-        {
-            std::cout << "[C++ Engine] Failed to load InvokeTransformIn function (rc: 0x" << std::hex << rc << std::dec << ")\n";
-            return false;
-        }
-
-        // Get InvokeTransformOut
-        rc = load_assembly_and_get_function_pointer(
-            managedCorePath.c_str(),
-            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
-            STR("InvokeTransformOut"),
-            UNMANAGEDCALLERSONLY_METHOD,
-            nullptr,
-            (void **)&ManagedInvokeTransformOut);
-
-        if (rc != 0 || ManagedInvokeTransformOut == nullptr)
-        {
-            std::cout << "[C++ Engine] Failed to load InvokeTransformOut function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            std::cout << "[C++ Engine] Failed to load Invoke function (rc: 0x" << std::hex << rc << std::dec << ")\n";
             return false;
         }
 
@@ -304,6 +244,16 @@ namespace MochiSharp
 
         auto resolved = scriptPath.string();
         return ManagedLoadAssembly(resolved.c_str()) != 0;
+    }
+
+    bool DotNetHost::RegisterSignature(int signatureId, const char *returnTypeName, const char **parameterTypeNames, int parameterCount)
+    {
+        if (!ManagedRegisterSignature)
+        {
+            return false;
+        }
+
+        return ManagedRegisterSignature(signatureId, returnTypeName, parameterTypeNames, parameterCount) != 0;
     }
 
     int DotNetHost::CreateInstance(const char *typeName)
@@ -344,64 +294,14 @@ namespace MochiSharp
         return ManagedBindStaticMethod(typeName, methodName, signature);
     }
 
-    bool DotNetHost::InvokeVoid(int methodId)
+    bool DotNetHost::Invoke(int methodId, const void *argsPtr, int argCount, void *returnPtr)
     {
-        if (!ManagedInvokeVoid)
+        if (!ManagedInvoke)
         {
             return false;
         }
 
-        return ManagedInvokeVoid(methodId) != 0;
-    }
-
-    bool DotNetHost::InvokeFloat(int methodId, float arg0)
-    {
-        if (!ManagedInvokeFloat)
-        {
-            return false;
-        }
-
-        return ManagedInvokeFloat(methodId, arg0) != 0;
-    }
-
-    bool DotNetHost::InvokeInt2(int methodId, int a, int b, int &outResult)
-    {
-        if (!ManagedInvokeInt2)
-        {
-            return false;
-        }
-
-        return ManagedInvokeInt2(methodId, a, b, &outResult) != 0;
-    }
-
-    bool DotNetHost::InvokeVector3(int methodId, const Vector3 &a, const Vector3 &b, Vector3 &outResult)
-    {
-        if (!ManagedInvokeVector3)
-        {
-            return false;
-        }
-
-        return ManagedInvokeVector3(methodId, &a, &b, &outResult) != 0;
-    }
-
-    bool DotNetHost::InvokeTransformIn(int methodId, const Transform &transform)
-    {
-        if (!ManagedInvokeTransformIn)
-        {
-            return false;
-        }
-
-        return ManagedInvokeTransformIn(methodId, &transform) != 0;
-    }
-
-    bool DotNetHost::InvokeTransformOut(int methodId, Transform &outTransform)
-    {
-        if (!ManagedInvokeTransformOut)
-        {
-            return false;
-        }
-
-        return ManagedInvokeTransformOut(methodId, &outTransform) != 0;
+        return ManagedInvoke(methodId, argsPtr, argCount, returnPtr) != 0;
     }
 
     bool DotNetHost::LoadHostFxr()

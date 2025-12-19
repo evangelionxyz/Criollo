@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace MochiSharp.Managed.Core
+namespace Example.Managed.Interop
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct Vector3

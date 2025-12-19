@@ -1,6 +1,6 @@
 ﻿using GameProject;
-using MochiSharp.Managed.Core;
 using System;
+using Example.Managed.Interop;
 
 namespace Example.Managed.Scripts
 {

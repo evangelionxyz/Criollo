@@ -104,16 +104,14 @@ namespace MochiSharp.Managed.Core
         }
 
         // Bind an instance method and return a method handle.
-        // signature: see ScriptMethodSignature enum.
         [UnmanagedCallersOnly]
         public static int BindInstanceMethod(int instanceId, IntPtr methodNamePtr, int signature)
         {
             try
             {
                 string methodName = Marshal.PtrToStringUTF8(methodNamePtr)!;
-                var sig = (ScriptMethodSignature)signature;
-                int id = GetContextOrThrow().BindInstanceMethod(instanceId, methodName, sig);
-                _hostHook?.Log($"Bound instance method {id}: instance {instanceId}.{methodName} ({sig})");
+                int id = GetContextOrThrow().BindInstanceMethod(instanceId, methodName, signature);
+                _hostHook?.Log($"Bound instance method {id}: instance {instanceId}.{methodName} (sig={signature})");
                 return id;
             }
             catch (Exception ex)
@@ -131,9 +129,8 @@ namespace MochiSharp.Managed.Core
             {
                 string typeName = Marshal.PtrToStringUTF8(typeNamePtr)!;
                 string methodName = Marshal.PtrToStringUTF8(methodNamePtr)!;
-                var sig = (ScriptMethodSignature)signature;
-                int id = GetContextOrThrow().BindStaticMethod(typeName, methodName, sig);
-                _hostHook?.Log($"Bound static method {id}: {typeName}.{methodName} ({sig})");
+                int id = GetContextOrThrow().BindStaticMethod(typeName, methodName, signature);
+                _hostHook?.Log($"Bound static method {id}: {typeName}.{methodName} (sig={signature})");
                 return id;
             }
             catch (Exception ex)
@@ -144,132 +141,51 @@ namespace MochiSharp.Managed.Core
         }
 
         [UnmanagedCallersOnly]
-        public static int InvokeVoid(int methodId)
+        public static int RegisterSignature(int signatureId, IntPtr returnTypeNamePtr, IntPtr parameterTypeNamePtrs, int parameterCount)
         {
             try
             {
-                GetContextOrThrow().InvokeVoid(methodId);
+                string returnTypeName = Marshal.PtrToStringUTF8(returnTypeNamePtr)!;
+                var paramNames = parameterCount == 0 ? Array.Empty<string>() : new string[parameterCount];
+                for (int i = 0; i < paramNames.Length; i++)
+                {
+                    IntPtr p = Marshal.ReadIntPtr(parameterTypeNamePtrs, i * IntPtr.Size);
+                    paramNames[i] = Marshal.PtrToStringUTF8(p)!;
+                }
+
+                GetContextOrThrow().RegisterSignature(signatureId, returnTypeName, paramNames);
+                _hostHook?.Log($"Registered signature {signatureId}: {returnTypeName}({string.Join(",", paramNames)})");
                 return 1;
             }
             catch (Exception ex)
             {
-                _hostHook?.Log($"InvokeVoid failed: {ex}");
+                _hostHook?.Log($"RegisterSignature failed: {ex}");
                 return 0;
             }
         }
 
+        // Generic invoke.
+        // argsPtr points to an array of IntPtr, each element points to the value for that argument.
+        // - int: pointer to int32
+        // - float: pointer to float32
+        // - bool: pointer to int32 (0/1)
+        // - struct: pointer to struct bytes (LayoutKind.Sequential)
+        // returnPtr:
+        // - void: can be null
+        // - int/bool: pointer to int32
+        // - float: pointer to float32
+        // - struct: pointer to struct bytes
         [UnmanagedCallersOnly]
-        public static int InvokeFloat(int methodId, float arg0)
+        public static int Invoke(int methodId, IntPtr argsPtr, int argCount, IntPtr returnPtr)
         {
             try
             {
-                GetContextOrThrow().InvokeFloat(methodId, arg0);
+                GetContextOrThrow().Invoke(methodId, argsPtr, argCount, returnPtr);
                 return 1;
             }
             catch (Exception ex)
             {
-                _hostHook?.Log($"InvokeFloat failed: {ex}");
-                return 0;
-            }
-        }
-
-        [UnmanagedCallersOnly]
-        public static int InvokeInt(int methodId, int arg0)
-        {
-            try
-            {
-                GetContextOrThrow().InvokeInt(methodId, arg0);
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                _hostHook?.Log($"InvokeInt failed: {ex}");
-                return 0;
-            }
-        }
-
-        // bool marshaled as int (0/1) for a stable native ABI.
-        [UnmanagedCallersOnly]
-        public static int InvokeBool(int methodId, int arg0)
-        {
-            try
-            {
-                GetContextOrThrow().InvokeBool(methodId, arg0);
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                _hostHook?.Log($"InvokeBool failed: {ex}");
-                return 0;
-            }
-        }
-
-        // Writes the int result to outResultPtr.
-        [UnmanagedCallersOnly]
-        public static int InvokeInt2(int methodId, int a, int b, IntPtr outResultPtr)
-        {
-            try
-            {
-                int result = GetContextOrThrow().InvokeInt2(methodId, a, b);
-                Marshal.WriteInt32(outResultPtr, result);
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                _hostHook?.Log($"InvokeInt2 failed: {ex}");
-                return 0;
-            }
-        }
-
-        // Reads two Vector3 structs from pointers and writes the result to outResultPtr.
-        [UnmanagedCallersOnly]
-        public static int InvokeVector3(int methodId, IntPtr aPtr, IntPtr bPtr, IntPtr outResultPtr)
-        {
-            try
-            {
-                Vector3 a = Marshal.PtrToStructure<Vector3>(aPtr);
-                Vector3 b = Marshal.PtrToStructure<Vector3>(bPtr);
-                Vector3 result = GetContextOrThrow().InvokeVector3(methodId, a, b);
-                Marshal.StructureToPtr(result, outResultPtr, fDeleteOld: false);
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                _hostHook?.Log($"InvokeVector3 failed: {ex}");
-                return 0;
-            }
-        }
-
-        // Reads a Transform struct from pointer and invokes a void(Transform) method.
-        [UnmanagedCallersOnly]
-        public static int InvokeTransformIn(int methodId, IntPtr transformPtr)
-        {
-            try
-            {
-                Transform transform = Marshal.PtrToStructure<Transform>(transformPtr);
-                GetContextOrThrow().InvokeTransformIn(methodId, transform);
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                _hostHook?.Log($"InvokeTransformIn failed: {ex}");
-                return 0;
-            }
-        }
-
-        // Invokes a Transform() method and writes the Transform result to outTransformPtr.
-        [UnmanagedCallersOnly]
-        public static int InvokeTransformOut(int methodId, IntPtr outTransformPtr)
-        {
-            try
-            {
-                Transform transform = GetContextOrThrow().InvokeTransformOut(methodId);
-                Marshal.StructureToPtr(transform, outTransformPtr, fDeleteOld: false);
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                _hostHook?.Log($"InvokeTransformOut failed: {ex}");
+                _hostHook?.Log($"Invoke failed: {ex}");
                 return 0;
             }
         }

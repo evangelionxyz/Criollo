@@ -1,275 +1,435 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 
 namespace MochiSharp.Managed.Core
 {
-    public enum ScriptMethodSignature : int
-    {
-        Void = 0,
-        Void_Float = 1,
-        Void_Int = 2,
-        Void_Bool = 3,
+	public sealed class ScriptContext
+	{
+		private sealed class PluginLoadContext : AssemblyLoadContext
+		{
+			private readonly AssemblyDependencyResolver _resolver;
+			private readonly Assembly _coreAssembly;
 
-        Int_IntInt = 10,
-        Vector3_Vector3Vector3 = 11,
-        Void_Transform = 12,
-        Transform = 13,
-    }
+			public PluginLoadContext(string mainAssemblyPath, Assembly coreAssembly)
+				: base($"MochiSharp.Plugin:{Path.GetFileNameWithoutExtension(mainAssemblyPath)}", isCollectible: true)
+			{
+				_resolver = new AssemblyDependencyResolver(mainAssemblyPath);
+				_coreAssembly = coreAssembly;
+			}
 
-    public sealed class ScriptContext : AssemblyLoadContext
-    {
-        private readonly string _pluginPath;
-        private readonly string _pluginDirectory;
-        private readonly Assembly _assembly;
-        private readonly AssemblyDependencyResolver _resolver;
+			protected override Assembly? Load(AssemblyName assemblyName)
+			{
+				// Ensure the core is always shared from the default context to avoid type identity issues.
+				if (string.Equals(assemblyName.Name, _coreAssembly.GetName().Name, StringComparison.OrdinalIgnoreCase))
+				{
+					return _coreAssembly;
+				}
 
-        private readonly Dictionary<int, object?> _instances = new();
-        private readonly Dictionary<int, BoundMethod> _methods = new();
-        private int _nextInstanceId = 1;
-        private int _nextMethodId = 1;
+				string? assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
+				if (assemblyPath == null)
+				{
+					return null;
+				}
 
-        private readonly struct BoundMethod
-        {
-            public BoundMethod(MethodInfo method, object? target, ScriptMethodSignature signature)
-            {
-                Method = method;
-                Target = target;
-                Signature = signature;
-            }
+				// Prefer already-loaded assemblies from the default context.
+				foreach (var asm in AssemblyLoadContext.Default.Assemblies)
+				{
+					var name = asm.GetName();
+					if (string.Equals(name.Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase))
+					{
+						return asm;
+					}
+				}
 
-            public MethodInfo Method { get; }
-            public object? Target { get; }
-            public ScriptMethodSignature Signature { get; }
-        }
+				return LoadFromAssemblyPath(assemblyPath);
+			}
 
-        public ScriptContext(string pluginPath)
-            : base(isCollectible: true)
-        {
-            // Important: native often passes a relative path (e.g. "Example.Managed.dll").
-            // Normalize it so dependency probing has a real directory.
-            _pluginPath = Path.GetFullPath(pluginPath);
-            _pluginDirectory = Path.GetDirectoryName(_pluginPath) ?? AppContext.BaseDirectory;
-            _resolver = new AssemblyDependencyResolver(_pluginPath);
+			protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
+			{
+				string? libraryPath = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+				if (libraryPath == null)
+				{
+					return IntPtr.Zero;
+				}
 
-            using var fs = new FileStream(_pluginPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            _assembly = LoadFromStream(fs);
-        }
+				return LoadUnmanagedDllFromPath(libraryPath);
+			}
+		}
 
-        public int CreateInstance(string typeName)
-        {
-            var type = _assembly.GetType(typeName, throwOnError: true, ignoreCase: false)
-                ?? throw new TypeLoadException($"Type '{typeName}' not found in '{_pluginPath}'.");
+		private readonly string _pluginPath;
+		private readonly PluginLoadContext _loadContext;
+		private readonly Assembly _pluginAssembly;
 
-            object? instance = Activator.CreateInstance(type);
-            if (instance == null)
-            {
-                throw new InvalidOperationException($"Failed to create instance of '{type.FullName}'. Ensure it has a parameterless constructor.");
-            }
+		private int _nextInstanceId = 1;
+		private readonly Dictionary<int, object> _instances = new();
 
-            int id = _nextInstanceId++;
-            _instances.Add(id, instance);
-            return id;
-        }
+		private int _nextMethodId = 1;
+		private readonly Dictionary<int, MethodBinding> _methods = new();
 
-        public void DestroyInstance(int instanceId)
-        {
-            _instances.Remove(instanceId);
-        }
+		private readonly Dictionary<int, Signature> _signatures = new();
 
-        public int BindInstanceMethod(int instanceId, string methodName, ScriptMethodSignature signature)
-        {
-            if (!_instances.TryGetValue(instanceId, out object? instance) || instance == null)
-            {
-                throw new KeyNotFoundException($"Instance '{instanceId}' not found.");
-            }
+		private readonly struct Signature
+		{
+			public readonly Type ReturnType;
+			public readonly Type[] ParameterTypes;
 
-            var type = instance.GetType();
-            MethodInfo method = ResolveMethod(type, methodName, signature);
+			public Signature(Type returnType, Type[] parameterTypes)
+			{
+				ReturnType = returnType;
+				ParameterTypes = parameterTypes;
+			}
+		}
 
-            int id = _nextMethodId++;
-            _methods.Add(id, new BoundMethod(method, method.IsStatic ? null : instance, signature));
-            return id;
-        }
+		private readonly struct MethodBinding
+		{
+			public readonly object? Target;
+			public readonly MethodInfo Method;
+			public readonly Signature Signature;
 
-        public int BindStaticMethod(string typeName, string methodName, ScriptMethodSignature signature)
-        {
-            var type = _assembly.GetType(typeName, throwOnError: true, ignoreCase: false)
-                ?? throw new TypeLoadException($"Type '{typeName}' not found in '{_pluginPath}'.");
+			public MethodBinding(object? target, MethodInfo method, Signature signature)
+			{
+				Target = target;
+				Method = method;
+				Signature = signature;
+			}
+		}
 
-            MethodInfo method = ResolveMethod(type, methodName, signature);
-            if (!method.IsStatic)
-            {
-                throw new InvalidOperationException($"Method '{type.FullName}.{methodName}' must be static for BindStaticMethod.");
-            }
+		public ScriptContext(string pluginAssemblyPath)
+		{
+			if (string.IsNullOrWhiteSpace(pluginAssemblyPath))
+			{
+				throw new ArgumentException("Plugin assembly path is required", nameof(pluginAssemblyPath));
+			}
 
-            int id = _nextMethodId++;
-            _methods.Add(id, new BoundMethod(method, null, signature));
-            return id;
-        }
+			_pluginPath = Path.GetFullPath(pluginAssemblyPath);
+			if (!File.Exists(_pluginPath))
+			{
+				throw new FileNotFoundException("Plugin assembly not found", _pluginPath);
+			}
 
-        public void UnbindMethod(int methodId)
-        {
-            _methods.Remove(methodId);
-        }
+			_loadContext = new PluginLoadContext(_pluginPath, typeof(Bootstrap).Assembly);
+			_pluginAssembly = _loadContext.LoadFromAssemblyPath(_pluginPath);
+		}
 
-        public void InvokeVoid(int methodId)
-        {
-            var bound = GetBoundMethod(methodId, ScriptMethodSignature.Void);
-            bound.Method.Invoke(bound.Target, null);
-        }
+		public void Unload()
+		{
+			_instances.Clear();
+			_methods.Clear();
+			_signatures.Clear();
+			_loadContext.Unload();
+		}
 
-        public void InvokeFloat(int methodId, float arg0)
-        {
-            var bound = GetBoundMethod(methodId, ScriptMethodSignature.Void_Float);
-            bound.Method.Invoke(bound.Target, new object?[] { arg0 });
-        }
+		public void RegisterSignature(int signatureId, string returnTypeName, string[] parameterTypeNames)
+		{
+			if (signatureId < 0)
+			{
+				throw new ArgumentOutOfRangeException(nameof(signatureId));
+			}
 
-        public void InvokeInt(int methodId, int arg0)
-        {
-            var bound = GetBoundMethod(methodId, ScriptMethodSignature.Void_Int);
-            bound.Method.Invoke(bound.Target, new object?[] { arg0 });
-        }
+			Type returnType = ResolveType(returnTypeName);
+			var paramTypes = parameterTypeNames.Length == 0
+				? Array.Empty<Type>()
+				: parameterTypeNames.Select(ResolveType).ToArray();
 
-        public void InvokeBool(int methodId, int arg0AsInt)
-        {
-            var bound = GetBoundMethod(methodId, ScriptMethodSignature.Void_Bool);
-            bool value = arg0AsInt != 0;
-            bound.Method.Invoke(bound.Target, new object?[] { value });
-        }
+			_signatures[signatureId] = new Signature(returnType, paramTypes);
+		}
 
-        public int InvokeInt2(int methodId, int a, int b)
-        {
-            var bound = GetBoundMethod(methodId, ScriptMethodSignature.Int_IntInt);
-            object? result = bound.Method.Invoke(bound.Target, new object?[] { a, b });
-            return result is int value
-                ? value
-                : throw new InvalidOperationException($"Method '{methodId}' did not return an int.");
-        }
+		public int CreateInstance(string typeName)
+		{
+			Type type = ResolvePluginType(typeName);
+			object instance = Activator.CreateInstance(type)
+				?? throw new InvalidOperationException($"Failed to create instance of {type.FullName}");
 
-        public Vector3 InvokeVector3(int methodId, Vector3 a, Vector3 b)
-        {
-            var bound = GetBoundMethod(methodId, ScriptMethodSignature.Vector3_Vector3Vector3);
-            object? result = bound.Method.Invoke(bound.Target, new object?[] { a, b });
-            return result is Vector3 value
-                ? value
-                : throw new InvalidOperationException($"Method '{methodId}' did not return a Vector3.");
-        }
+			int id = _nextInstanceId++;
+			_instances.Add(id, instance);
+			return id;
+		}
 
-        public void InvokeTransformIn(int methodId, Transform transform)
-        {
-            var bound = GetBoundMethod(methodId, ScriptMethodSignature.Void_Transform);
-            bound.Method.Invoke(bound.Target, new object?[] { transform });
-        }
+		public void DestroyInstance(int instanceId)
+		{
+			if (_instances.Remove(instanceId, out var obj))
+			{
+				if (obj is IDisposable d)
+				{
+					d.Dispose();
+				}
+			}
+		}
 
-        public Transform InvokeTransformOut(int methodId)
-        {
-            var bound = GetBoundMethod(methodId, ScriptMethodSignature.Transform);
-            object? result = bound.Method.Invoke(bound.Target, null);
-            return result is Transform value
-                ? value
-                : throw new InvalidOperationException($"Method '{methodId}' did not return a Transform.");
-        }
+		public int BindInstanceMethod(int instanceId, string methodName, int signatureId)
+		{
+			if (!_instances.TryGetValue(instanceId, out var instance))
+			{
+				throw new KeyNotFoundException($"Instance id not found: {instanceId}");
+			}
 
-        private BoundMethod GetBoundMethod(int methodId, ScriptMethodSignature expected)
-        {
-            if (!_methods.TryGetValue(methodId, out BoundMethod bound))
-            {
-                throw new KeyNotFoundException($"Method '{methodId}' not found.");
-            }
+			Signature sig = GetSignature(signatureId);
+			var type = instance.GetType();
+			var method = FindMethod(type, methodName, sig.ParameterTypes, isStatic: false);
+			EnsureReturnType(method, sig.ReturnType);
 
-            if (bound.Signature != expected)
-            {
-                throw new InvalidOperationException($"Method '{methodId}' was bound as '{bound.Signature}' but invoked as '{expected}'.");
-            }
+			int id = _nextMethodId++;
+			_methods.Add(id, new MethodBinding(instance, method, sig));
+			return id;
+		}
 
-            return bound;
-        }
+		public int BindStaticMethod(string typeName, string methodName, int signatureId)
+		{
+			Type type = ResolvePluginType(typeName);
+			Signature sig = GetSignature(signatureId);
+			var method = FindMethod(type, methodName, sig.ParameterTypes, isStatic: true);
+			EnsureReturnType(method, sig.ReturnType);
 
-        private static MethodInfo ResolveMethod(Type type, string methodName, ScriptMethodSignature signature)
-        {
-            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+			int id = _nextMethodId++;
+			_methods.Add(id, new MethodBinding(null, method, sig));
+			return id;
+		}
 
-            (Type[] parameterTypes, Type returnType) = signature switch
-            {
-                ScriptMethodSignature.Void => (Type.EmptyTypes, typeof(void)),
-                ScriptMethodSignature.Void_Float => (new[] { typeof(float) }, typeof(void)),
-                ScriptMethodSignature.Void_Int => (new[] { typeof(int) }, typeof(void)),
-                ScriptMethodSignature.Void_Bool => (new[] { typeof(bool) }, typeof(void)),
+		public void Invoke(int methodId, IntPtr argsPtr, int argCount, IntPtr returnPtr)
+		{
+			if (!_methods.TryGetValue(methodId, out var binding))
+			{
+				throw new KeyNotFoundException($"Method id not found: {methodId}");
+			}
 
-                ScriptMethodSignature.Int_IntInt => (new[] { typeof(int), typeof(int) }, typeof(int)),
-                ScriptMethodSignature.Vector3_Vector3Vector3 => (new[] { typeof(Vector3), typeof(Vector3) }, typeof(Vector3)),
-                ScriptMethodSignature.Void_Transform => (new[] { typeof(Transform) }, typeof(void)),
-                ScriptMethodSignature.Transform => (Type.EmptyTypes, typeof(Transform)),
+			var sig = binding.Signature;
+			if (argCount != sig.ParameterTypes.Length)
+			{
+				throw new ArgumentException($"Argument count mismatch. Expected {sig.ParameterTypes.Length}, got {argCount}");
+			}
 
-                _ => throw new ArgumentOutOfRangeException(nameof(signature), signature, "Unsupported signature"),
-            };
+			object?[] args = argCount == 0 ? Array.Empty<object?>() : new object?[argCount];
+			for (int i = 0; i < argCount; i++)
+			{
+				IntPtr argValuePtr = Marshal.ReadIntPtr(argsPtr, i * IntPtr.Size);
+				args[i] = ReadValueFromPointer(sig.ParameterTypes[i], argValuePtr);
+			}
 
-            var method = type.GetMethod(methodName, flags, binder: null, types: parameterTypes, modifiers: null);
-            if (method == null)
-            {
-                throw new MissingMethodException(type.FullName, methodName);
-            }
+			object? result = binding.Method.Invoke(binding.Target, args);
+			WriteReturnValueToPointer(sig.ReturnType, result, returnPtr);
+		}
 
-            if (method.ReturnType != returnType)
-            {
-                throw new InvalidOperationException($"Method '{type.FullName}.{methodName}' must return '{returnType.Name}'.");
-            }
+		private Signature GetSignature(int signatureId)
+		{
+			if (!_signatures.TryGetValue(signatureId, out var sig))
+			{
+				throw new InvalidOperationException($"Signature not registered: {signatureId}");
+			}
 
-            return method;
-        }
+			return sig;
+		}
 
-        protected override Assembly Load(AssemblyName assemblyName)
-        {
-            if (string.IsNullOrWhiteSpace(assemblyName.Name))
-            {
-                return null!;
-            }
+		private static void EnsureReturnType(MethodInfo method, Type expectedReturnType)
+		{
+			if (method.ReturnType != expectedReturnType)
+			{
+				throw new InvalidOperationException($"Return type mismatch for {method.DeclaringType?.FullName}.{method.Name}. Expected {expectedReturnType}, got {method.ReturnType}");
+			}
+		}
 
-            // Always share MochiSharp.Managed with scripts.
-            // If scripts end up loading a second copy of MochiSharp.Managed into the collectible context,
-            // types like Vector3/Transform become non-identical and reflection binding/invocation breaks.
-            var coreName = typeof(ScriptContext).Assembly.GetName().Name;
-            if (coreName != null && string.Equals(coreName, assemblyName.Name, StringComparison.OrdinalIgnoreCase))
-            {
-                return typeof(ScriptContext).Assembly;
-            }
+		private static MethodInfo FindMethod(Type type, string methodName, Type[] parameterTypes, bool isStatic)
+		{
+			BindingFlags flags = (isStatic ? BindingFlags.Static : BindingFlags.Instance) | BindingFlags.Public | BindingFlags.NonPublic;
 
-            // Prefer already-loaded assemblies from the default context.
-            // This fixes cases like Example.Managed referencing MochiSharp.Managed
-            // (which is already loaded as the host's managed core).
-            foreach (var asm in AssemblyLoadContext.Default.Assemblies)
-            {
-                var name = asm.GetName().Name;
-                if (name != null && string.Equals(name, assemblyName.Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    return asm;
-                }
-            }
+			var method = type.GetMethod(methodName, flags, binder: null, types: parameterTypes, modifiers: null);
+			if (method != null)
+			{
+				return method;
+			}
 
-            // Use deps.json-based resolution when available.
-            string? resolvedPath = _resolver.ResolveAssemblyToPath(assemblyName);
-            if (!string.IsNullOrWhiteSpace(resolvedPath) && File.Exists(resolvedPath))
-            {
-                using var resolvedStream = new FileStream(resolvedPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                return LoadFromStream(resolvedStream);
-            }
+			// Fallback: manually scan in case of binder quirks.
+			foreach (var m in type.GetMethods(flags))
+			{
+				if (!string.Equals(m.Name, methodName, StringComparison.Ordinal))
+				{
+					continue;
+				}
 
-            // Fallback: probe next to the plugin DLL, then the host base directory.
-            string candidatePath = Path.Combine(_pluginDirectory, assemblyName.Name + ".dll");
-            if (!File.Exists(candidatePath))
-            {
-                candidatePath = Path.Combine(AppContext.BaseDirectory, assemblyName.Name + ".dll");
-                if (!File.Exists(candidatePath))
-                {
-                    return null!;
-                }
-            }
+				var ps = m.GetParameters();
+				if (ps.Length != parameterTypes.Length)
+				{
+					continue;
+				}
 
-            using var candidateStream = new FileStream(candidatePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            return LoadFromStream(candidateStream);
-        }
-    }
+				bool ok = true;
+				for (int i = 0; i < ps.Length; i++)
+				{
+					if (ps[i].ParameterType != parameterTypes[i])
+					{
+						ok = false;
+						break;
+					}
+				}
+
+				if (ok)
+				{
+					return m;
+				}
+			}
+
+			throw new MissingMethodException($"Method not found: {type.FullName}.{methodName}({string.Join(",", parameterTypes.Select(t => t.FullName))})");
+		}
+
+		private Type ResolvePluginType(string typeName)
+		{
+			// Prefer plugin assembly resolution so scripts stay in the collectible context.
+			var t = _pluginAssembly.GetType(typeName, throwOnError: false, ignoreCase: false);
+			if (t != null)
+			{
+				return t;
+			}
+
+			// Fallback: try loaded assemblies in the plugin ALC.
+			foreach (var asm in _loadContext.Assemblies)
+			{
+				t = asm.GetType(typeName, throwOnError: false, ignoreCase: false);
+				if (t != null)
+				{
+					return t;
+				}
+			}
+
+			// Last resort.
+			t = Type.GetType(typeName, throwOnError: false);
+			if (t != null)
+			{
+				return t;
+			}
+
+			throw new TypeLoadException($"Type not found: {typeName}");
+		}
+
+		private Type ResolveType(string typeName)
+		{
+			if (string.IsNullOrWhiteSpace(typeName))
+			{
+				throw new ArgumentException("Type name required", nameof(typeName));
+			}
+
+			string n = typeName.Trim();
+			if (string.Equals(n, "void", StringComparison.OrdinalIgnoreCase) || string.Equals(n, typeof(void).FullName, StringComparison.Ordinal))
+			{
+				return typeof(void);
+			}
+			if (string.Equals(n, "int", StringComparison.OrdinalIgnoreCase) || string.Equals(n, typeof(int).FullName, StringComparison.Ordinal))
+			{
+				return typeof(int);
+			}
+			if (string.Equals(n, "float", StringComparison.OrdinalIgnoreCase) || string.Equals(n, typeof(float).FullName, StringComparison.Ordinal))
+			{
+				return typeof(float);
+			}
+			if (string.Equals(n, "bool", StringComparison.OrdinalIgnoreCase) || string.Equals(n, typeof(bool).FullName, StringComparison.Ordinal))
+			{
+				return typeof(bool);
+			}
+
+			// Try standard resolution first.
+			Type? t = Type.GetType(n, throwOnError: false);
+			if (t != null)
+			{
+				return t;
+			}
+
+			// If assembly-qualified, strip the type full name and try in plugin ALC assemblies.
+			string fullName = n.Split(',')[0].Trim();
+			foreach (var asm in _loadContext.Assemblies)
+			{
+				t = asm.GetType(fullName, throwOnError: false, ignoreCase: false);
+				if (t != null)
+				{
+					return t;
+				}
+			}
+
+			// Try AppDomain assemblies too (covers BCL and already loaded deps).
+			foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+			{
+				t = asm.GetType(fullName, throwOnError: false, ignoreCase: false);
+				if (t != null)
+				{
+					return t;
+				}
+			}
+
+			throw new TypeLoadException($"Unable to resolve type: {typeName}");
+		}
+
+		private static object ReadValueFromPointer(Type type, IntPtr ptr)
+		{
+			if (type == typeof(int))
+			{
+				return Marshal.ReadInt32(ptr);
+			}
+
+			if (type == typeof(float))
+			{
+				return Marshal.PtrToStructure<float>(ptr);
+			}
+
+			if (type == typeof(bool))
+			{
+				return Marshal.ReadInt32(ptr) != 0;
+			}
+
+			if (type.IsValueType)
+			{
+				return Marshal.PtrToStructure(ptr, type) ?? throw new InvalidOperationException($"Failed to marshal {type}");
+			}
+
+			throw new NotSupportedException($"Unsupported parameter type: {type}");
+		}
+
+		private static void WriteReturnValueToPointer(Type returnType, object? result, IntPtr returnPtr)
+		{
+			if (returnType == typeof(void))
+			{
+				return;
+			}
+
+			if (returnPtr == IntPtr.Zero)
+			{
+				throw new ArgumentException("Return pointer must be non-null for non-void return");
+			}
+
+			if (returnType == typeof(int))
+			{
+				Marshal.WriteInt32(returnPtr, result is int i ? i : 0);
+				return;
+			}
+
+			if (returnType == typeof(float))
+			{
+				float f = result is float ff ? ff : 0.0f;
+				Marshal.StructureToPtr(f, returnPtr, fDeleteOld: false);
+				return;
+			}
+
+			if (returnType == typeof(bool))
+			{
+				bool b = result is bool bb && bb;
+				Marshal.WriteInt32(returnPtr, b ? 1 : 0);
+				return;
+			}
+
+			if (returnType.IsValueType)
+			{
+				if (result == null)
+				{
+					throw new InvalidOperationException($"Method returned null for value type {returnType}");
+				}
+
+				Marshal.StructureToPtr(result, returnPtr, fDeleteOld: false);
+				return;
+			}
+
+			throw new NotSupportedException($"Unsupported return type: {returnType}");
+		}
+	}
 }
+
