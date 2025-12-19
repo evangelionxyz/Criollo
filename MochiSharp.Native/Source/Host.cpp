@@ -1,7 +1,8 @@
 // Copyright (c) 2025 Evangelion Manuhutu
 
 #include "Host.h"
-#include <print>
+#include <iostream>
+#include <iomanip>
 #include <assert.h>
 
 #define STR(s) L ## s
@@ -14,11 +15,49 @@ hostfxr_close_fn close_fptr = nullptr;
 
 #include <filesystem>
 
+static std::filesystem::path GetExecutablePath()
+{
+#ifdef _WIN32
+    wchar_t buffer[MAX_PATH];
+    DWORD len = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+    if (len == 0)
+    {
+        return std::filesystem::current_path();
+    }
+    return std::filesystem::path(std::wstring(buffer, len));
+#else
+    return std::filesystem::current_path();
+#endif
+}
+
+static std::filesystem::path GetExecutableDirectory()
+{
+    auto exePath = GetExecutablePath();
+    return exePath.has_parent_path() ? exePath.parent_path() : std::filesystem::current_path();
+}
+
+static std::filesystem::path ResolvePathRelativeToExecutable(const std::filesystem::path &path)
+{
+    if (path.is_absolute())
+    {
+        return path;
+    }
+
+    auto exeDir = GetExecutableDirectory();
+    auto candidate = exeDir / path;
+    if (std::filesystem::exists(candidate))
+    {
+        return candidate;
+    }
+
+    return std::filesystem::current_path() / path;
+}
+
 namespace MochiSharp
 {
     void DotNetHost::EngineLog(const char *msg)
     {
-        std::println("[C++ Engine] {}", msg);
+        std::cout << "[C++ Engine] " << msg << "\n";
     }
 
     bool DotNetHost::Init(const std::wstring &configPath)
@@ -28,7 +67,16 @@ namespace MochiSharp
             return false;
         }
 
-        int rc = init_fptr(configPath.c_str(), nullptr, &m_Ctx);
+        auto configFullPath = ResolvePathRelativeToExecutable(std::filesystem::path(configPath));
+        if (!std::filesystem::exists(configFullPath))
+        {
+            std::wcout << L"[C++ Engine] runtimeconfig not found: " << configFullPath.wstring() << L"\n";
+            return false;
+        }
+
+        m_BaseDir = configFullPath.parent_path();
+
+        int rc = init_fptr(configFullPath.c_str(), nullptr, &m_Ctx);
         if (rc != 0 || m_Ctx == nullptr)
         {
             return false;
@@ -46,11 +94,16 @@ namespace MochiSharp
         }
 
         // Load ManagedCore and get the function pointers
-        assert(std::filesystem::exists("MochiSharp.Managed.dll") && "MochiSharp.Managed.dll not found");
+        auto managedCorePath = (m_BaseDir / L"MochiSharp.Managed.dll");
+        if (!std::filesystem::exists(managedCorePath))
+        {
+            std::wcout << L"[C++ Engine] MochiSharp.Managed.dll not found: " << managedCorePath.wstring() << L"\n";
+            return false;
+        }
 
         // Get Initialize
         rc = load_assembly_and_get_function_pointer(
-            STR("MochiSharp.Managed.dll"),
+            managedCorePath.c_str(),
             STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
             STR("Initialize"),
             UNMANAGEDCALLERSONLY_METHOD,
@@ -59,37 +112,157 @@ namespace MochiSharp
 
         if (rc != 0 || ManagedInit == nullptr)
         {
-            std::println("[C++ Engine] Failed to load Initialize function (rc: 0x{:X})", rc);
+            std::cout << "[C++ Engine] Failed to load Initialize function (rc: 0x" << std::hex << rc << std::dec << ")\n";
             return false;
         }
 
-        // Get LoadGameAssembly
+        // Get LoadAssembly
         rc = load_assembly_and_get_function_pointer(
-            STR("MochiSharp.Managed.dll"),
+            managedCorePath.c_str(),
             STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
-            STR("LoadGameAssembly"),
+            STR("LoadAssembly"),
             UNMANAGEDCALLERSONLY_METHOD,
             nullptr,
-            (void **)&ManagedLoad);
+            (void **)&ManagedLoadAssembly);
 
-        if (rc != 0 || ManagedLoad == nullptr)
+        if (rc != 0 || ManagedLoadAssembly == nullptr)
         {
-            std::println("[C++ Engine] Failed to load LoadGameAssembly function (rc: 0x{:X})", rc);
+            std::cout << "[C++ Engine] Failed to load LoadAssembly function (rc: 0x" << std::hex << rc << std::dec << ")\n";
             return false;
         }
 
-        // Get Update
+        // Get RegisterSignature
         rc = load_assembly_and_get_function_pointer(
-            STR("MochiSharp.Managed.dll"),
+            managedCorePath.c_str(),
             STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
-            STR("Update"),
+            STR("RegisterSignature"),
             UNMANAGEDCALLERSONLY_METHOD,
             nullptr,
-            (void **)&ManagedUpdate);
+            (void **)&ManagedRegisterSignature);
 
-        if (rc != 0 || ManagedUpdate == nullptr)
+        if (rc != 0 || ManagedRegisterSignature == nullptr)
         {
-            std::println("[C++ Engine] Failed to load Update function (rc: 0x{:X})", rc);
+            std::cout << "[C++ Engine] Failed to load RegisterSignature function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get CreateInstance
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("CreateInstance"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedCreateInstance);
+
+        if (rc != 0 || ManagedCreateInstance == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load CreateInstance function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get CreateInstanceGuid
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("CreateInstanceGuid"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedCreateInstanceGuid);
+
+        if (rc != 0 || ManagedCreateInstanceGuid == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load CreateInstanceGuid function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get DestroyInstance
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("DestroyInstance"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedDestroyInstance);
+
+        if (rc != 0 || ManagedDestroyInstance == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load DestroyInstance function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get DestroyInstanceGuid
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("DestroyInstanceGuid"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedDestroyInstanceGuid);
+
+        if (rc != 0 || ManagedDestroyInstanceGuid == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load DestroyInstanceGuid function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get BindInstanceMethod
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("BindInstanceMethod"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedBindInstanceMethod);
+
+        if (rc != 0 || ManagedBindInstanceMethod == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load BindInstanceMethod function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get BindInstanceMethodGuid
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("BindInstanceMethodGuid"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedBindInstanceMethodGuid);
+
+        if (rc != 0 || ManagedBindInstanceMethodGuid == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load BindInstanceMethodGuid function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get BindStaticMethod
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("BindStaticMethod"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedBindStaticMethod);
+
+        if (rc != 0 || ManagedBindStaticMethod == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load BindStaticMethod function (rc: 0x" << std::hex << rc << std::dec << ")\n";
+            return false;
+        }
+
+        // Get Invoke
+        rc = load_assembly_and_get_function_pointer(
+            managedCorePath.c_str(),
+            STR("MochiSharp.Managed.Core.Bootstrap, MochiSharp.Managed"),
+            STR("Invoke"),
+            UNMANAGEDCALLERSONLY_METHOD,
+            nullptr,
+            (void **)&ManagedInvoke);
+
+        if (rc != 0 || ManagedInvoke == nullptr)
+        {
+            std::cout << "[C++ Engine] Failed to load Invoke function (rc: 0x" << std::hex << rc << std::dec << ")\n";
             return false;
         }
 
@@ -101,20 +274,107 @@ namespace MochiSharp
         return true;
     }
 
-    void DotNetHost::LoadScript(const char *path)
+    bool DotNetHost::LoadAssembly(const char *path)
     {
-        if (ManagedLoad)
+        if (!ManagedLoadAssembly)
         {
-            ManagedLoad(path);
+            return false;
+        }
+
+        std::filesystem::path scriptPath(path);
+        if (!scriptPath.is_absolute())
+        {
+            scriptPath = m_BaseDir / scriptPath;
+        }
+
+        auto resolved = scriptPath.string();
+        return ManagedLoadAssembly(resolved.c_str()) != 0;
+    }
+
+    bool DotNetHost::RegisterSignature(int signatureId, const char *returnTypeName, const char **parameterTypeNames, int parameterCount)
+    {
+        if (!ManagedRegisterSignature)
+        {
+            return false;
+        }
+
+        return ManagedRegisterSignature(signatureId, returnTypeName, parameterTypeNames, parameterCount) != 0;
+    }
+
+    int DotNetHost::CreateInstance(const char *typeName)
+    {
+        if (!ManagedCreateInstance)
+        {
+            return 0;
+        }
+
+        return ManagedCreateInstance(typeName);
+    }
+
+    bool DotNetHost::CreateInstanceGuid(const char *typeName, const char *instanceGuid)
+    {
+        if (!ManagedCreateInstanceGuid)
+        {
+            return false;
+        }
+
+        return ManagedCreateInstanceGuid(typeName, instanceGuid) != 0;
+    }
+
+    void DotNetHost::DestroyInstance(int instanceId)
+    {
+        if (ManagedDestroyInstance)
+        {
+            ManagedDestroyInstance(instanceId);
         }
     }
 
-    void DotNetHost::Update()
+    void DotNetHost::DestroyInstanceGuid(const char *instanceGuid)
     {
-        if (ManagedUpdate)
+        if (ManagedDestroyInstanceGuid)
         {
-            ManagedUpdate();
+            ManagedDestroyInstanceGuid(instanceGuid);
         }
+    }
+
+    int DotNetHost::BindInstanceMethod(int instanceId, const char *methodName, int signature)
+    {
+        if (!ManagedBindInstanceMethod)
+        {
+            return 0;
+        }
+
+        return ManagedBindInstanceMethod(instanceId, methodName, signature);
+    }
+
+    int DotNetHost::BindInstanceMethodGuid(const char *instanceGuid, const char *methodName, int signature)
+    {
+        if (!ManagedBindInstanceMethodGuid)
+        {
+            return 0;
+        }
+
+        return ManagedBindInstanceMethodGuid(instanceGuid, methodName, signature);
+    }
+
+    int DotNetHost::BindStaticMethod(const char *typeName, const char *methodName, int signature)
+    {
+        if (!ManagedBindStaticMethod)
+        {
+            return 0;
+        }
+
+        return ManagedBindStaticMethod(typeName, methodName, signature);
+    }
+
+    bool DotNetHost::Invoke(int methodId, const void *argsPtr, int argCount, void *returnPtr)
+    {
+        if (!ManagedInvoke)
+        {
+            return false;
+        }
+
+        return ManagedInvoke(methodId, argsPtr, argCount, returnPtr) != 0;
     }
 
     bool DotNetHost::LoadHostFxr()

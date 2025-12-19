@@ -2,23 +2,183 @@
 
 #include "Host.h"
 
+#include <thread>
+#include <chrono>
+#include <print>
+#include <string>
+
+namespace ExampleInterop
+{
+    struct Vector3
+    {
+        float X;
+        float Y;
+        float Z;
+    };
+
+    struct Transform
+    {
+        Vector3 Position;
+        Vector3 Rotation;
+        Vector3 Scale;
+    };
+}
+
+enum ScriptMethodSignature : int
+{
+    Void = 0,
+    Void_Float = 1,
+    Void_Int = 2,
+    Void_Bool = 3,
+
+    Int_IntInt = 10,
+    Vector3_Vector3Vector3 = 11,
+    Void_Transform = 12,
+    Transform = 13,
+};
+
+struct ScriptInstance
+{
+    MochiSharp::DotNetHost* Host;
+    std::string Guid;
+    int OnAwake = 0;
+    int OnStart = 0;
+    int OnUpdate = 0;
+    int SetTransform = 0;
+    int GetTransform = 0;
+
+    void Init(MochiSharp::DotNetHost* host, const char* guid, const char* typeName)
+    {
+        Host = host;
+        Guid = guid;
+        if (Host->CreateInstanceGuid(typeName, Guid.c_str()))
+        {
+            std::println("[C++] Created instance {} of type {}", Guid, typeName);
+            OnAwake = Host->BindInstanceMethodGuid(Guid.c_str(), "OnAwake", ScriptMethodSignature::Void);
+            OnStart = Host->BindInstanceMethodGuid(Guid.c_str(), "OnStart", ScriptMethodSignature::Void);
+            OnUpdate = Host->BindInstanceMethodGuid(Guid.c_str(), "OnUpdate", ScriptMethodSignature::Void_Float);
+            SetTransform = Host->BindInstanceMethodGuid(Guid.c_str(), "SetTransform", ScriptMethodSignature::Void_Transform);
+            GetTransform = Host->BindInstanceMethodGuid(Guid.c_str(), "GetTransform", ScriptMethodSignature::Transform);
+        }
+        else
+        {
+            std::println("[C++] Failed to create instance {}", Guid);
+        }
+    }
+
+    void Awake() { if (OnAwake) Host->Invoke(OnAwake, nullptr, 0, nullptr); }
+    void Start() { if (OnStart) Host->Invoke(OnStart, nullptr, 0, nullptr); }
+    void Update(float dt) { if (OnUpdate) { void* args[] = { &dt }; Host->Invoke(OnUpdate, args, 1, nullptr); } }
+    
+    void SetTx(const ExampleInterop::Transform& t) { 
+        if (SetTransform) { 
+            void* args[] = { const_cast<ExampleInterop::Transform*>(&t) }; 
+            Host->Invoke(SetTransform, args, 1, nullptr); 
+        } 
+    }
+    
+    ExampleInterop::Transform GetTx() {
+        ExampleInterop::Transform t{};
+        if (GetTransform) Host->Invoke(GetTransform, nullptr, 0, &t);
+        return t;
+    }
+};
+
 #ifdef _WIN32
 int __cdecl wmain(int argc, wchar_t *argv[])
 #else
 int main(int argc, char *argv[])
 #endif
 {
+    // MochiSharp::HostSettings settings;
+
     MochiSharp::DotNetHost host;
     if (!host.Init(L"MochiSharp.Managed.runtimeconfig.json"))
     {
         return 1;
     }
 
-    host.LoadScript("Example.Managed.dll");
-    bool running = true;
-    while (running)
+    // Load the script assembly
+    if (!host.LoadAssembly("Example.Managed.dll"))
     {
-        host.Update();
+        return 1;
+    }
+
+    // Register signatures (the core stays generic; the app defines what these IDs mean).
+    // Note: use assembly-qualified names for app-defined structs.
+    const char *vector3Type = "Example.Managed.Interop.Vector3, Example.Managed";
+    const char *transformType = "Example.Managed.Interop.Transform, Example.Managed";
+
+    {
+        host.RegisterSignature(ScriptMethodSignature::Void, "System.Void", nullptr, 0);
+    }
+
+    {
+        const char *p1[] = { "System.Single" };
+        host.RegisterSignature(ScriptMethodSignature::Void_Float, "System.Void", p1, 1);
+    }
+
+    {
+        const char *p2[] = { "System.Int32", "System.Int32" };
+        host.RegisterSignature(ScriptMethodSignature::Int_IntInt, "System.Int32", p2, 2);
+    }
+
+    {
+        const char *p2[] = { vector3Type, vector3Type };
+        host.RegisterSignature(ScriptMethodSignature::Vector3_Vector3Vector3, vector3Type, p2, 2);
+    }
+
+    {
+        const char *p1[] = { transformType };
+        host.RegisterSignature(ScriptMethodSignature::Void_Transform, "System.Void", p1, 1);
+    }
+
+    {
+        host.RegisterSignature(ScriptMethodSignature::Transform, transformType, nullptr, 0);
+    }
+
+    // Create multiple script instances
+    ScriptInstance player1;
+    player1.Init(&host, "c3f5a1b7-1c21-4f5f-9e3a-7a9a2bf6b7d1", "Example.Managed.Scripts.Player");
+
+    ScriptInstance player2;
+    player2.Init(&host, "d4f6b2c8-2d32-5e6f-af4b-8b0b3cf7c8e2", "Example.Managed.Scripts.Player");
+
+    player1.Awake();
+    player2.Awake();
+
+    player1.Start();
+    player2.Start();
+
+    // Set different transforms to prove independence
+    ExampleInterop::Transform t1 = { {1,1,1}, {0,0,0}, {1,1,1} };
+    player1.SetTx(t1);
+
+    ExampleInterop::Transform t2 = { {2,2,2}, {0,45,0}, {2,2,2} };
+    player2.SetTx(t2);
+
+    // Verify state
+    auto t1_out = player1.GetTx();
+    auto t2_out = player2.GetTx();
+    
+    std::println("[C++] Player 1 Pos: {},{},{}", t1_out.Position.X, t1_out.Position.Y, t1_out.Position.Z);
+    std::println("[C++] Player 2 Pos: {},{},{}", t2_out.Position.X, t2_out.Position.Y, t2_out.Position.Z);
+
+    bool running = true;
+    auto start = std::chrono::steady_clock::now();
+
+    int runningCount = 0;
+    while (running && runningCount <= 10)
+    {
+        auto end = std::chrono::steady_clock::now();
+        float deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0f;
+        start = end;
+
+        player1.Update(deltaTime);
+        player2.Update(deltaTime);
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        runningCount++;
     }
 
     return 0;
