@@ -120,16 +120,24 @@ public class ScriptAssemblyManager
             _loadContext.Unload();
             _loadContext = null;
 
-            // Force garbage collection to ensure context is cleaned up
-            for (int i = 0; i < 3 && weakRef.IsAlive; i++)
+            // Force garbage collection multiple times to ensure context is cleaned up
+            // This is important to release file locks on the DLL
+            for (int i = 0; i < 5 && weakRef.IsAlive; i++)
             {
-                GC.Collect();
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
                 GC.WaitForPendingFinalizers();
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+                
+                if (weakRef.IsAlive)
+                {
+                    Debug.Log($"[ScriptAssemblyManager] GC iteration {i + 1}, context still alive...");
+                    System.Threading.Thread.Sleep(100);
+                }
             }
             
             if (weakRef.IsAlive)
             {
-                Debug.LogWarning("[ScriptAssemblyManager] Script context may still be alive after unload");
+                Debug.LogWarning("[ScriptAssemblyManager] Script context may still be alive after unload - file may be locked");
             }
             else
             {
