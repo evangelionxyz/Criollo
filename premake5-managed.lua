@@ -1,21 +1,19 @@
-workspace "MochiSharp"
+workspace "MochiSharp-Managed"
     flags { "MultiProcessorCompile" }
-    configurations {
-        "Debug",
-        "Release",
-        "Shipping"
-    }
+    configurations { "Debug", "Release" }
 
-    platforms { "Any CPU" }
-
+    startproject "Example.Managed"
 
     BUILD_DIR = "%{wks.location}/bin"
     OUTPUT_DIR = "%{BUILD_DIR}/%{cfg.buildcfg}/%{cfg.platform}"
     INTOUTPUT_DIR = "%{wks.location}/bin/objs/%{cfg.buildcfg}/%{cfg.platform}/%{prj.name}"
 
+    -- Thirdparty
+    THIRDPARTY_DIR = "%{wks.location}/ThirdParty"
+
     -- Projects
-    include "MochiSharp.Native/mochisharp-native.lua"
     include "MochiSharp.Managed/mochisharp-managed.lua"
     
-    include "TestRuntime/test-runtime.lua"
-    include "TestScript/test-script.lua"
+    group "Example"
+    include "Example/Managed/example-managed.lua"
+    group ""

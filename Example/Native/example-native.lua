@@ -1,11 +1,12 @@
-project "TestRuntime"
-    location "%{wks.location}/TestRuntime"
+project "Example.Native"
+    location "%{wks.location}/Example/Native"
     kind "ConsoleApp"
     language "C++"
     cppdialect "c++23"
+    architecture "x64"
 
     targetdir (OUTPUT_DIR)
-    objdir (INTOOUTPUT_DIR)
+    objdir (INTOUTPUT_DIR)
 
     files {
         "Source/**.cpp",
@@ -13,11 +14,22 @@ project "TestRuntime"
     }
 
     includedirs {
-        "%{wks.location}/MochiSharp.Native/Source"
+        "%{wks.location}/MochiSharp.Native/Source",
+        "%{IncludeDirs.Hostfxr}"
+    }
+
+    libdirs {
+        "%{IncludeDirs.Hostfxr}"
     }
 
     links {
-        "MochiSharp.Native"
+        "MochiSharp.Native",
+        "%{THIRDPARTY_DIR}/dotnet/host/fxr/9.0.11/x64/nethost.lib"
+    }
+
+    postbuildcommands {
+        "{COPY} \"%{THIRDPARTY_DIR}/dotnet/host/fxr/9.0.11/x64/nethost.dll\" \"%{cfg.targetdir}\"",
+        "{COPY} \"%{THIRDPARTY_DIR}/dotnet/host/fxr/9.0.11/x64/hostfxr.dll\" \"%{cfg.targetdir}\""
     }
 
     filter "system:windows"
@@ -40,14 +52,5 @@ project "TestRuntime"
     filter "configurations:Release"
         runtime "Release"
         optimize "speed"
-        symbols "on"
-        defines { "NDEBUG" }
-
-    filter "configurations:Shipping"
-        runtime "Release"
-        optimize "speed"
         symbols "off"
         defines { "NDEBUG" }
-    
-    filter "platforms:Any CPU"
-        architecture "x64"

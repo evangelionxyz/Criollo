@@ -1,17 +1,14 @@
-project "TestScript"
-    location "%{wks.location}/TestScript"
+project "Example.Managed"
+    location "%{wks.location}/Example/Managed"
     kind "SharedLib"
     language "C#"
     dotnetframework "net9.0"
-    platforms { "Any CPU" }
 
     targetdir (OUTPUT_DIR)
-    objdir (INTOOUTPUT_DIR)
+    objdir (INTOUTPUT_DIR)
 
     files {
-        "Core/**.cs",
-        "Mathf/**.cs",
-        "Scene/**.cs"
+        "**.cs"
     }
 
     links {
@@ -26,17 +23,10 @@ project "TestScript"
             EnableDynamicLoading = "true",
             ImplicitUsing = "enable"
         }
-
-    filter { "action:vs*", "platforms:x64" }
-        vsprops { PlatformTarget = "x64" }
         
     filter "configurations:Debug"
         symbols "on"
 
     filter "configurations:Release"
-        optimize "on"
-        symbols "on"
-
-    filter "configurations:Shipping"
         optimize "on"
         symbols "off"

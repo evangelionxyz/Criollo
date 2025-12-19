@@ -3,10 +3,11 @@ project "MochiSharp.Managed"
     kind "SharedLib"
     language "C#"
     dotnetframework "net9.0"
-    platforms { "Any CPU" }
+
+    -- Don't specify architecture here. (see https://github.com/premake/premake-core/issues/1758)
 
     targetdir (OUTPUT_DIR)
-    objdir (INTOOUTPUT_DIR)
+    objdir (INTOUTPUT_DIR)
 
     files {
         "Core/**.cs",
@@ -22,17 +23,10 @@ project "MochiSharp.Managed"
             EnableDynamicLoading = "true",
             ImplicitUsing = "enable"
         }
-
-    filter { "action:vs*", "platforms:x64" }
-        vsprops { PlatformTarget = "x64" }
         
     filter "configurations:Debug"
         symbols "on"
 
     filter "configurations:Release"
-        optimize "on"
-        symbols "on"
-
-    filter "configurations:Shipping"
         optimize "on"
         symbols "off"
