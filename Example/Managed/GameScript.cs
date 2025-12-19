@@ -8,5 +8,7 @@ namespace GameProject;
 
 public abstract class GameScript
 {
-    public abstract void Update();
+    public abstract void OnAwake();
+    public abstract void OnStart();
+    public abstract void OnUpdate(float deltaTime);
 }
